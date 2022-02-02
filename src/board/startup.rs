@@ -1,59 +1,15 @@
 //! Handles CPU startup (segment init, etc) that's common to all CPUs.
 //! Chip specific init (like the interrupt table) should be in the relevant <chip> module.
 
-// ****************************************************************************
-//
-// Imports
-//
-// ****************************************************************************
-
 use cortex_m;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 
 use board;
-use cpu::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
+use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
 
 extern "Rust" {
     fn stellaris_main(board: board::Board);
 }
-
-// ****************************************************************************
-//
-// Public Types
-//
-// ****************************************************************************
-
-// None
-
-// ****************************************************************************
-//
-// Public Data
-//
-// ****************************************************************************
-
-// None
-
-// ****************************************************************************
-//
-// Private Types
-//
-// ****************************************************************************
-
-// None
-
-// ****************************************************************************
-//
-// Private Data
-//
-// ****************************************************************************
-
-// None
-
-// ****************************************************************************
-//
-// Public Functions
-//
-// ****************************************************************************
 
 /// Performs what you might otherwise call 'C Startup'.
 /// This routine is specified at the reset vector in the ISR vector table.
@@ -69,11 +25,6 @@ unsafe fn call_main() -> ! {
     }
 }
 
-// ****************************************************************************
-//
-// Private Functions
-//
-// ****************************************************************************
 
 /// A HardFault is an exception that occurs because of an error during
 /// exception processing, or because an exception cannot be managed by any
@@ -84,9 +35,9 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
     // Need ITM support for this to work
     // iprintln!("EXCEPTION {:?} @ PC=0x{:08x}", Exception::active(), sf.pc);
 
-    let peripherals = tm4c123x_hal::Peripherals::steal();
+    let peripherals = tm4c129x_hal::Peripherals::steal();
     let sysctl = peripherals.SYSCTL.constrain();
-    let mut pins = peripherals.GPIO_PORTA.split(&sysctl.power_control);
+    let mut pins = peripherals.GPIO_PORTA_AHB.split(&sysctl.power_control);
     use core::fmt::Write;
     let mut uart = serial::Serial::uart0(
         peripherals.UART0,
@@ -183,9 +134,3 @@ fn SysTick() {
 unsafe fn DefaultHandler(_irq_number: i16) -> ! {
     board::panic();
 }
-
-// ****************************************************************************
-//
-// End Of File
-//
-// ****************************************************************************

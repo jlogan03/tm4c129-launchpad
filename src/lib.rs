@@ -7,9 +7,9 @@
 extern crate cortex_m;
 extern crate cortex_m_rt;
 extern crate embedded_hal;
-pub extern crate tm4c129x_hal;
-extern crate volatile_register;
+extern crate tm4c129x_hal;
 
 pub mod board;
+pub mod startup;
 pub mod drivers;
 pub mod builtins;

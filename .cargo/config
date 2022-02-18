@@ -3,5 +3,6 @@ target = "thumbv7em-none-eabihf"
 
 [target.thumbv7em-none-eabihf]
 rustflags = [
-	"-C", "link-arg=-Tlink.x",
+	# May want to use Mold linker in the future https://github.com/rui314/mold#why-is-mold-so-fast
+	"-C", "link-arg=-Tlink.x",  # Use cortex-m-rt's generated link.x linker script
 ]

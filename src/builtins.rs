@@ -1,4 +1,4 @@
-//! Functions required by the code rustc/LLVM generates.
+//! Functions required by rustc/LLVM
 
 use board;
 use core::panic::PanicInfo;

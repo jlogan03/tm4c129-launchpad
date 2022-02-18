@@ -1,5 +1,4 @@
-//! Handles CPU startup (segment init, etc) that's common to all CPUs.
-//! Chip specific init (like the interrupt table) should be in the relevant <chip> module.
+//! Handles board-specific CPU startup
 
 use cortex_m;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
@@ -64,7 +63,7 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
 /// * masked or prevented from activation by any other exception
 /// * preempted by any exception other than Reset.
 #[exception]
-fn NonMaskableInt() {
+unsafe fn NonMaskableInt() {
     // Do nothing
 }
 

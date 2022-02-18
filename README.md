@@ -35,11 +35,9 @@ Clone https://github.com/utzig/lm4tools and run make to build the binaries. Then
 # Compile
 cargo build --example blink --release
 
-# Convert binary to format compatible with micro
+# Convert binary to a compatible format
 arm-none-eabi-objcopy -O binary target/thumbv7em-none-eabihf/release/examples/blink target/thumbv7em-none-eabihf/release/examples/blink.bin
 
 # Flash the board
 sudo lm4flash target/thumbv7em-none-eabihf/release/examples/blink.bin
 ```
-
-The program can also be debugged while running, using OpenOCD to monitor a GDB debugger server. See OpenOCD quick-start instructions at https://sourceforge.net/p/openocd/code/ci/master/tree/.

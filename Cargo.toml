@@ -12,9 +12,18 @@ repository = "https://github.com/jlogan03/tm4c129-launchpad"
 categories = ["hardware-support"]
 
 [profile.release]
+opt-level = "s"  # Compiler optimization for minimum file size
 lto = true       # Use full link-time optimization to reduce file size
-# debug = true     # Include debugging flags in release version; minimal effect on file size
-opt-level = "s"  # Compiler otimization for minimum file size
+debug = false
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev]
+opt-level = "s"
+lto = true
+debug = true     # Include debugging flags & allow panic branches
+debug-assertions = true
+overflow-checks = true
 
 [dependencies]
 cortex-m = "0.7.4"

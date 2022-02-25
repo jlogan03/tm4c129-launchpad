@@ -50,9 +50,12 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
         board::clocks(),
         &sysctl.power_control,
     );
+
+    // Debug formatter can panic, so this can't be run with panic_never
+    #[cfg(debug_assertions)]
     writeln!(uart, "SF: {:?}", sf).unwrap_or_default();
 
-    // cortex_m::asm::bkpt();
+    cortex_m::asm::bkpt();
 
     loop {}
 }

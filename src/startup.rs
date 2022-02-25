@@ -6,6 +6,8 @@ use cortex_m_rt::{entry, exception, ExceptionFrame};
 use board;
 use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
 
+use core::fmt::Write;
+
 extern "Rust" {
     fn stellaris_main(board: board::Board);
 }
@@ -37,7 +39,6 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
     let peripherals = tm4c129x_hal::Peripherals::steal();
     let sysctl = peripherals.SYSCTL.constrain();
     let mut pins = peripherals.GPIO_PORTA_AHB.split(&sysctl.power_control);
-    use core::fmt::Write;
     let mut uart = serial::Serial::uart0(
         peripherals.UART0,
         pins.pa1.into_af_push_pull(&mut pins.control),
@@ -49,7 +50,10 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
         board::clocks(),
         &sysctl.power_control,
     );
-    writeln!(uart, "SF: {:?}", sf).unwrap();
+
+    // Debug formatter can panic, so this can't be run with panic_never
+    #[cfg(debug_assertions)]
+    writeln!(uart, "SF: {:?}", sf).unwrap_or_default();
 
     cortex_m::asm::bkpt();
 
@@ -74,7 +78,7 @@ unsafe fn NonMaskableInt() {
 /// (XN) memory regions.
 #[exception]
 fn MemoryManagement() {
-    board::panic();
+    board::safe();
 }
 
 /// A BusFault is an exception that occurs because of a memory related fault
@@ -82,7 +86,7 @@ fn MemoryManagement() {
 /// detected on a bus in the memory system.
 #[exception]
 fn BusFault() {
-    board::panic();
+    board::safe();
 }
 
 /// A UsageFault is an exception that occurs because of a fault related to instruction execution. This includes:
@@ -95,7 +99,7 @@ fn BusFault() {
 /// * division by zero.
 #[exception]
 fn UsageFault() {
-    board::panic();
+    board::safe();
 }
 
 /// A supervisor call (SVC) is an exception that is triggered by the SVC
@@ -130,6 +134,6 @@ fn SysTick() {
 
 /// A place-holder ISR used when we have nothing better to use.
 #[exception]
-unsafe fn DefaultHandler(_irq_number: i16) -> ! {
-    board::panic();
+unsafe fn DefaultHandler(_irq_number: i16) -> () {
+    board::safe();
 }

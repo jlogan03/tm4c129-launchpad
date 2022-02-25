@@ -13,7 +13,7 @@ categories = ["hardware-support"]
 
 [profile.release]
 lto = true       # Use full link-time optimization to reduce file size
-debug = true     # Include debugging flags in release version; minimal effect on file size
+# debug = true     # Include debugging flags in release version; minimal effect on file size
 opt-level = "s"  # Compiler otimization for minimum file size
 
 [dependencies]
@@ -21,3 +21,4 @@ cortex-m = "0.7.4"
 cortex-m-rt = "0.7.1"
 embedded-hal = "0.2.7"
 tm4c129x-hal = "0.9.2"
+panic-never = "0.1.0"

@@ -3,7 +3,7 @@
 pub use super::startup;
 
 use embedded_hal::digital::v2::OutputPin;
-use tm4c129x_hal::gpio::{gpiof::*, gpion::*, gpioj::*, GpioExt, Input, Output, PullUp, PushPull};
+use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
     Clocks, CrystalFrequency, Oscillator, PllOutputFrequency, SysctlExt, SystemClock,
 };
@@ -193,10 +193,17 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
-    // Initialize peripherals and 
+    // Initialize peripherals and
     pub(crate) fn new() -> Board {
-        let core_peripherals = tm4c129x_hal::CorePeripherals::take().unwrap();
-        let peripherals = tm4c129x_hal::Peripherals::take().unwrap();
+        let core_peripherals = match tm4c129x_hal::CorePeripherals::take() {
+            Some(x) => x,
+            None => loop {}, // This error occurs before the panic handler could even work
+        };
+        let peripherals = match tm4c129x_hal::Peripherals::take() {
+            Some(x) => x,
+            None => loop {}, // This error occurs before the panic handler could even work
+        };
+
         let mut sysctl = peripherals.SYSCTL.constrain();
 
         // FPU
@@ -218,14 +225,14 @@ impl Board {
 
         // GPIO (LEDs and buttons)
         let pins_gpion = peripherals.GPIO_PORTN.split(&sysctl.power_control);
-        let led1: PN0<Output<PushPull>>  = pins_gpion.pn0.into_push_pull_output();
-        let led0: PN1<Output<PushPull>> = pins_gpion.pn1.into_push_pull_output();   
+        let led1: PN0<Output<PushPull>> = pins_gpion.pn0.into_push_pull_output();
+        let led0: PN1<Output<PushPull>> = pins_gpion.pn1.into_push_pull_output();
 
         let pins_gpiof = peripherals.GPIO_PORTF_AHB.split(&sysctl.power_control);
         let led3: PF0<Output<PushPull>> = pins_gpiof.pf0.into_push_pull_output();
         let led2: PF4<Output<PushPull>> = pins_gpiof.pf4.into_push_pull_output();
 
-        let pins_gpioj = peripherals.GPIO_PORTJ_AHB.split(&sysctl.power_control); 
+        let pins_gpioj = peripherals.GPIO_PORTJ_AHB.split(&sysctl.power_control);
         let button0 = pins_gpioj.pj0.into_pull_up_input();
         let button1 = pins_gpioj.pj1.into_pull_up_input();
 
@@ -246,7 +253,6 @@ impl Board {
             portn_control: pins_gpion.control,
             portj_control: pins_gpioj.control,
             // ----------------------------------
-
             WATCHDOG0: peripherals.WATCHDOG0,
             WATCHDOG1: peripherals.WATCHDOG1,
 
@@ -322,8 +328,15 @@ impl Board {
     }
 }
 
+#[cfg(debug_assertions)]
 /// Panic handler
 pub fn panic() -> ! {
+    let _ = safe();
+    loop {} // Inaccessible, but required to demonstrate that the function can never return
+}
+
+/// Unrecoverable error; cycle LEDs until reset
+pub fn safe() -> () {
     use embedded_hal::blocking::delay::DelayMs;
     let core_peripherals = unsafe { tm4c129x_hal::CorePeripherals::steal() };
     let p = unsafe { tm4c129x_hal::Peripherals::steal() };
@@ -332,9 +345,9 @@ pub fn panic() -> ! {
     let mut delay = tm4c129x_hal::delay::Delay::new(core_peripherals.SYST, unsafe { &CLOCKS });
     let mut led0 = pins.pf1.into_push_pull_output();
     loop {
-        let _ = led0.set_high();
+        let _ = led0.set_high().unwrap_or_default();
         delay.delay_ms(200u32);
-        let _ = led0.set_low();
+        let _ = led0.set_low().unwrap_or_default();
         delay.delay_ms(200u32);
     }
 }

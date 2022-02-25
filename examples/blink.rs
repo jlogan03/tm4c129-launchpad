@@ -40,9 +40,9 @@ pub fn stellaris_main(mut board: board::Board) {
     let mut loops = 0;
     loop {
         // Spam serial
-        writeln!(uart, "Hello, world! Loops = {}", loops).unwrap();
+        writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
         while let Ok(ch) = uart.read() {
-            writeln!(uart, "byte read {}", ch).unwrap();
+            writeln!(uart, "byte read {}", ch).unwrap_or_default();
         }
         loops = loops + 1;
 

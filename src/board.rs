@@ -1,7 +1,5 @@
 //! Hardware definitions capturing the configuration of the board
 
-pub use super::startup;
-
 use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
@@ -193,7 +191,7 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
-    // Initialize peripherals and
+    // Initialize peripherals
     pub(crate) fn new() -> Board {
         let core_peripherals = match tm4c129x_hal::CorePeripherals::take() {
             Some(x) => x,
@@ -235,6 +233,10 @@ impl Board {
         let pins_gpioj = peripherals.GPIO_PORTJ_AHB.split(&sysctl.power_control);
         let button0 = pins_gpioj.pj0.into_pull_up_input();
         let button1 = pins_gpioj.pj1.into_pull_up_input();
+
+        // Ethernet
+        use tm4c129x_hal::sysctl::{control_power, Domain, RunMode, PowerState};
+        control_power(&sysctl.power_control, Domain::Emac0, RunMode::Run, PowerState::On);
 
         Board {
             core_peripherals,
@@ -328,15 +330,8 @@ impl Board {
     }
 }
 
-#[cfg(debug_assertions)]
-/// Panic handler
-pub fn panic() -> ! {
-    let _ = safe();
-    loop {} // Inaccessible, but required to demonstrate that the function can never return
-}
-
 /// Unrecoverable error; cycle LEDs until reset
-pub fn safe() -> () {
+pub fn safe() -> ! {
     use embedded_hal::blocking::delay::DelayMs;
     let core_peripherals = unsafe { tm4c129x_hal::CorePeripherals::steal() };
     let p = unsafe { tm4c129x_hal::Peripherals::steal() };

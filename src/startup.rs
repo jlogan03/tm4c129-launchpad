@@ -55,9 +55,7 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
     #[cfg(debug_assertions)]
     writeln!(uart, "SF: {:?}", sf).unwrap_or_default();
 
-    cortex_m::asm::bkpt();
-
-    loop {}
+    board::safe();
 }
 
 /// A Non Maskable Interrupt (NMI) can be signalled by a peripheral or

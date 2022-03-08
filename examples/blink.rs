@@ -16,9 +16,11 @@ use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
 use tm4c129_launchpad::board;
+// use tm4c129_launchpad::drivers::emac::get_rom_macaddr;
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) {
+
     let mut pins_a = board.GPIO_PORTA_AHB.split(&board.power_control);
     let mut uart = serial::Serial::uart0(
         board.UART0,
@@ -35,6 +37,10 @@ pub fn stellaris_main(mut board: board::Board) {
         board.core_peripherals.SYST,
         board::clocks(),
     );
+
+    // let asdf = board.HIB.ctl.read();  // Works fine
+    let asdf = board.EMAC0.cc.read();
+
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;

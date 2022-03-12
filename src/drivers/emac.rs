@@ -1,18 +1,17 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
-// use tm4c129x_hal::sysctl::{control_power, reset, Domain, PowerControl, PowerState, RunMode};
 use tm4c129x_hal::tm4c129x::EMAC0;
 
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {
     // Unpack address values from register structure
-    // They're stored as u16, padded up to u32 by the HAL, and needed as u8
+    // They're stored as u16 (populating half a 32-bit register) and needed as u8
     let addr: [u8; 6] = [
-        (&emac.addr0h).read().bits() as u8,
-        (&emac.addr0l).read().bits() as u8,
-        (&emac.addr1h).read().bits() as u8,
-        (&emac.addr1l).read().bits() as u8,
-        (&emac.addr2h).read().bits() as u8,
-        (&emac.addr2l).read().bits() as u8,
+        (&emac.addr0h).read().addrhi().bits() as u8,
+        (&emac.addr0l).read().addrlo().bits() as u8,
+        (&emac.addr1h).read().addrhi().bits() as u8,
+        (&emac.addr1l).read().addrlo().bits() as u8,
+        (&emac.addr2h).read().addrhi().bits() as u8,
+        (&emac.addr2l).read().addrlo().bits() as u8,
     ];
 
     addr
@@ -27,7 +26,7 @@ pub fn phy_cfg(emac: &EMAC0) {
     emac.cfg.modify(|_, w| w.dupm().set_bit());    // Duplex mode full
 }
 
-/// Configure EMAC (must run phy_cfg first, then reset!)
+/// Configure EMAC (must run phy_cfg first, then reset before configuring EMAC!)
 pub fn emac_cfg(emac: &EMAC0) {
 
 }

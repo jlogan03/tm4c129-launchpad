@@ -1,6 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 // use tm4c129x_hal::sysctl::{control_power, reset, Domain, PowerControl, PowerState, RunMode};
-use tm4c129x_hal::{tm4c129x::EMAC0, sysctl::{PowerControl}};
+use tm4c129x_hal::{tm4c129x::EMAC0, sysctl::{PowerControl, Domain, reset}};
 
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {

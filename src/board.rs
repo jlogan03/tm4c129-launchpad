@@ -4,10 +4,12 @@ use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
     control_power, reset, Clocks, CrystalFrequency, Domain, Oscillator, PllOutputFrequency,
-    PowerControl, PowerState, RunMode, SysctlExt, SystemClock, self,
+    PowerControl, PowerState, RunMode, SysctlExt, SystemClock
 };
 use tm4c129x_hal::time::Hertz;
 use tm4c129x_hal::tm4c129x::EMAC0;
+
+use crate::drivers;
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -238,6 +240,7 @@ impl Board {
 
         // Ethernet
         emac_enable(&sysctl.power_control, &peripherals.EMAC0);
+        drivers::emac::dummy(&sysctl.power_control);
 
         // need to wait for it to come out of reset - how to check?
 
@@ -377,5 +380,5 @@ pub fn emac_enable(power_control: &PowerControl, emac: &EMAC0) {
     reset(power_control, Domain::Ephy0);
 
     // Wait until reset is finished again
-    
+
 }

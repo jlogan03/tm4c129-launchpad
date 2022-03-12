@@ -1,6 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 // use tm4c129x_hal::sysctl::{control_power, reset, Domain, PowerControl, PowerState, RunMode};
-use tm4c129x_hal::{tm4c129x::EMAC0, sysctl::{PowerControl, Domain, reset}};
+use tm4c129x_hal::tm4c129x::EMAC0;
 
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {
@@ -18,7 +18,16 @@ pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {
     addr
 }
 
-/// Test function to probe elusive panic branch
-pub fn dummy(power_control: &PowerControl) {
-    reset(power_control, Domain::Emac0);
+/// Configure EMAC to use internal PHY & configure internal PHY
+pub fn phy_cfg(emac: &EMAC0) {
+    emac.pc.modify(|_, w| w.phyext().clear_bit());  // Use internal PHY (disable external)
+    emac.pc.modify(|_, w| w.mdixen().set_bit());    // Enable MDIX
+    emac.pc.modify(|_, w| w.anen().set_bit());    // Enable autonegotiation
+    emac.cfg.modify(|_, w| w.fes().set_bit());    // Speed 100 base T
+    emac.cfg.modify(|_, w| w.dupm().set_bit());    // Duplex mode full
+}
+
+/// Configure EMAC (must run phy_cfg first, then reset!)
+pub fn emac_cfg(emac: &EMAC0) {
+
 }

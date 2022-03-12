@@ -37,7 +37,6 @@ pub fn stellaris_main(mut board: board::Board) {
         board::clocks(),
     );
 
-    let asdf = board.EMAC0.cc.read();
     let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.EMAC0);
 
 

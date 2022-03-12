@@ -238,9 +238,23 @@ impl Board {
         let button0 = pins_gpioj.pj0.into_pull_up_input();
         let button1 = pins_gpioj.pj1.into_pull_up_input();
 
-        // Ethernet
-        emac_enable(&sysctl.power_control, &peripherals.EMAC0);
-        drivers::emac::dummy(&sysctl.power_control);
+        // Ethernet setup
+        // Note the portions that use the power_control lock introduce a panic branch if they are run from
+        // another module, so they must be run directly here.
+        //   Power on & enable
+        control_power(&sysctl.power_control, Domain::Emac0, RunMode::Run, PowerState::On);
+        control_power(&sysctl.power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
+        //   Reset to allow configuration
+        reset(&sysctl.power_control, Domain::Emac0);
+        reset(&sysctl.power_control, Domain::Ephy0);
+        //   Configure PHY
+        drivers::emac::phy_cfg(&peripherals.EMAC0);
+        //   Reset to lock-in PHY configuration
+        reset(&sysctl.power_control, Domain::Emac0);
+        reset(&sysctl.power_control, Domain::Ephy0);
+
+
+        
 
         // need to wait for it to come out of reset - how to check?
 
@@ -351,34 +365,4 @@ pub fn safe() -> ! {
         let _ = led0.set_low().unwrap_or_default();
         delay.delay_ms(200u32);
     }
-}
-
-/// Power-on and reset EMAC and internal PHY, and configure to use internal PHY
-///
-/// This function must be in this module to avoid introducing a panic branch
-pub fn emac_enable(power_control: &PowerControl, emac: &EMAC0) {
-    // Power on
-    control_power(power_control, Domain::Emac0, RunMode::Run, PowerState::On);
-    control_power(power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
-
-    // Reset to allow configuration
-    reset(power_control, Domain::Emac0);
-    reset(power_control, Domain::Ephy0);
-
-    // Wait until reset is finished
-    
-
-    // Configure PHY
-    emac.pc.modify(|_, w| w.phyext().clear_bit());  // Use internal PHY (disable external)
-    emac.pc.modify(|_, w| w.mdixen().set_bit());    // Enable MDIX
-    emac.pc.modify(|_, w| w.anen().set_bit());    // Enable autonegotiation
-    emac.cfg.modify(|_, w| w.fes().set_bit());    // Speed 100Mbps
-    emac.cfg.modify(|_, w| w.dupm().set_bit());    // Duplex mode full
-
-    // Reset to lock-in configuration
-    reset(power_control, Domain::Emac0);
-    reset(power_control, Domain::Ephy0);
-
-    // Wait until reset is finished again
-
 }

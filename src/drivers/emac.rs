@@ -20,5 +20,5 @@ pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {
 
 /// Test function to probe elusive panic branch
 pub fn dummy(power_control: &PowerControl) {
-    // reset(power_control, Domain::Emac0);
+    reset(power_control, Domain::Emac0);
 }

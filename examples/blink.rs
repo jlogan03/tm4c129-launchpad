@@ -15,8 +15,7 @@ use embedded_hal::digital::v2::*;  // GPIO set high/low
 use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
-use tm4c129_launchpad::board;
-// use tm4c129_launchpad::drivers::emac::get_rom_macaddr;
+use tm4c129_launchpad::{board, drivers::emac};
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) {
@@ -38,8 +37,8 @@ pub fn stellaris_main(mut board: board::Board) {
         board::clocks(),
     );
 
-    // let asdf = board.HIB.ctl.read();  // Works fine
     let asdf = board.EMAC0.cc.read();
+    let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.EMAC0);
 
 
     uart.write_all("Welcome to Launchpad Blink\n");

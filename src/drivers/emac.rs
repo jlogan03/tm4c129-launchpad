@@ -17,3 +17,10 @@ pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {
 
     addr
 }
+
+
+/// Set EMAC configuration
+pub fn emac_cfg(emac: &EMAC0) {
+
+}
+

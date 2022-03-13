@@ -361,13 +361,21 @@ pub fn safe() -> ! {
 
 
 /// Reset EMAC and EPHY, then wait until they show ready status
+/// 
+/// EPHY is reset first so that it is ready to negotiate connection
+/// to EMAC when it comes out of reset
 fn emac_reset(power_control: &PowerControl) {
-    //   Reset power and set ready flag to false
-    reset(power_control, Domain::Emac0);
+    //   Reset EPHY, then wait until SYSCTL sets ready status
     reset(power_control, Domain::Ephy0);
-    //   Wait until SYSCTL sets ready status
     loop {
         let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
-        if p.premac.read().r0().bit_is_set() && p.prephy.read().r0().bit_is_set() {break}
+        if p.prephy.read().r0().bit_is_set() {break}
     }
+    // Reset EMAC, then wait until SYSCTL sets ready status
+    reset(power_control, Domain::Emac0);
+    loop {
+        let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
+        if p.premac.read().r0().bit_is_set() {break}
+    }
+    
 }

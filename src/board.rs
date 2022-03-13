@@ -1,5 +1,6 @@
 //! Hardware definitions capturing the configuration of the board
 
+use cortex_m::peripheral;
 use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
@@ -238,25 +239,16 @@ impl Board {
         let button0 = pins_gpioj.pj0.into_pull_up_input();
         let button1 = pins_gpioj.pj1.into_pull_up_input();
 
-        // Ethernet setup
+        // Ethernet
         // Note the portions that use the power_control lock introduce a panic branch if they are run from
         // another module, so they must be run directly here.
         //   Power on & enable
         control_power(&sysctl.power_control, Domain::Emac0, RunMode::Run, PowerState::On);
         control_power(&sysctl.power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
-        //   Reset to allow configuration
-        reset(&sysctl.power_control, Domain::Emac0);
-        reset(&sysctl.power_control, Domain::Ephy0);
-        //   Configure PHY
+        emac_reset(&sysctl.power_control);  //   Reset to allow configuration
+        //   Configure to use internal PHY in 100 base T mode
         drivers::emac::phy_cfg(&peripherals.EMAC0);
-        //   Reset to lock-in PHY configuration
-        reset(&sysctl.power_control, Domain::Emac0);
-        reset(&sysctl.power_control, Domain::Ephy0);
-
-
-        
-
-        // need to wait for it to come out of reset - how to check?
+        emac_reset(&sysctl.power_control);  //   Reset to allow configuration
 
         Board {
             core_peripherals,
@@ -364,5 +356,18 @@ pub fn safe() -> ! {
         delay.delay_ms(200u32);
         let _ = led0.set_low().unwrap_or_default();
         delay.delay_ms(200u32);
+    }
+}
+
+
+/// Reset EMAC and EPHY, then wait until they show ready status
+fn emac_reset(power_control: &PowerControl) {
+    //   Reset power and set ready flag to false
+    reset(power_control, Domain::Emac0);
+    reset(power_control, Domain::Ephy0);
+    //   Wait until SYSCTL sets ready status
+    loop {
+        let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
+        if p.premac.read().r0().bit_is_set() && p.prephy.read().r0().bit_is_set() {break}
     }
 }

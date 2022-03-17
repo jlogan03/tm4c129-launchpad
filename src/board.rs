@@ -5,7 +5,7 @@ use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
     control_power, reset, Clocks, CrystalFrequency, Domain, Oscillator, PllOutputFrequency,
-    PowerControl, PowerState, RunMode, SysctlExt, SystemClock
+    PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
 };
 use tm4c129x_hal::time::Hertz;
 use tm4c129x_hal::tm4c129x::EMAC0;
@@ -243,12 +243,22 @@ impl Board {
         // Note the portions that use the power_control lock introduce a panic branch if they are run from
         // another module, so they must be run directly here.
         //   Power on & enable
-        control_power(&sysctl.power_control, Domain::Emac0, RunMode::Run, PowerState::On);
-        control_power(&sysctl.power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
-        emac_reset(&sysctl.power_control);  //   Reset to allow configuration
-        //   Configure to use internal PHY in 100 base T mode
-        drivers::emac::phy_cfg(&peripherals.EMAC0);
-        emac_reset(&sysctl.power_control);  //   Reset to allow configuration
+        control_power(
+            &sysctl.power_control,
+            Domain::Emac0,
+            RunMode::Run,
+            PowerState::On,
+        );
+        control_power(
+            &sysctl.power_control,
+            Domain::Ephy0,
+            RunMode::Run,
+            PowerState::On,
+        );
+        emac_reset(&sysctl.power_control); //   Reset to allow configuration
+        drivers::emac::phy_cfg(&peripherals.EMAC0); //   Use internal PHY in 100 base T mode
+        emac_reset(&sysctl.power_control); //   Reset to lock-in PHY configuration
+
 
         Board {
             core_peripherals,
@@ -266,6 +276,7 @@ impl Board {
             portf_control: pins_gpiof.control,
             portn_control: pins_gpion.control,
             portj_control: pins_gpioj.control,
+
             // ----------------------------------
             WATCHDOG0: peripherals.WATCHDOG0,
             WATCHDOG1: peripherals.WATCHDOG1,
@@ -359,23 +370,25 @@ pub fn safe() -> ! {
     }
 }
 
-
 /// Reset EMAC and EPHY, then wait until they show ready status
-/// 
+///
 /// EPHY is reset first so that it is ready to negotiate connection
 /// to EMAC when it comes out of reset
 fn emac_reset(power_control: &PowerControl) {
+    //   Get a handle to sysctl to check ready status
+    let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
     //   Reset EPHY, then wait until SYSCTL sets ready status
     reset(power_control, Domain::Ephy0);
     loop {
-        let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
-        if p.prephy.read().r0().bit_is_set() {break}
+        if p.prephy.read().r0().bit_is_set() {
+            break;
+        }
     }
     // Reset EMAC, then wait until SYSCTL sets ready status
     reset(power_control, Domain::Emac0);
     loop {
-        let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
-        if p.premac.read().r0().bit_is_set() {break}
+        if p.premac.read().r0().bit_is_set() {
+            break;
+        }
     }
-    
 }

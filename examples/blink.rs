@@ -37,8 +37,7 @@ pub fn stellaris_main(mut board: board::Board) {
         board::clocks(),
     );
 
-    let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.EMAC0);
-
+    // let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.EMAC0);
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;

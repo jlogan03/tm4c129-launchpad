@@ -242,28 +242,25 @@ impl Board {
         // Ethernet
         // Note the portions that use the power_control lock introduce a panic branch if they are run from
         // another module, so they must be run directly here.
-        //   Power on & enable
+        //   Power on, enable, and reset
         control_power(
             &sysctl.power_control,
             Domain::Emac0,
             RunMode::Run,
             PowerState::On,
         );
+        emac_reset(&sysctl.power_control);
         control_power(
             &sysctl.power_control,
             Domain::Ephy0,
             RunMode::Run,
             PowerState::On,
         );
-        ephy_reset(&sysctl.power_control); //   Reset both to allow configuration
-        emac_reset(&sysctl.power_control);
-        drivers::emac::phy_cfg(&peripherals.EMAC0); //   Use internal PHY in 100 base T mode
-        ephy_reset(&sysctl.power_control); //   Reset EPHY to make sure it is ready to connect with EMAC
-        emac_reset(&sysctl.power_control); //   Reset EMAC to lock-in configuration
-        drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
-        emac_reset(&sysctl.power_control); //   Reset EMAC to lock-in configuration
-        
+        ephy_reset(&sysctl.power_control);
 
+        drivers::emac::phy_cfg(&peripherals.EMAC0); // Use internal PHY in 100 base T mode
+        drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
+        drivers::emac::emac_cfg(&peripherals.EMAC0); // Set up EMAC transmit/receive behavior
 
         Board {
             core_peripherals,

@@ -1,5 +1,5 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
-use tm4c129x_hal::tm4c129x::{EMAC0, FLASH_CTRL};
+use tm4c129x_hal::{tm4c129x::{EMAC0, FLASH_CTRL}, sysctl::PllOutputFrequency};
 
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
@@ -37,7 +37,7 @@ pub fn emac_init(emac: &EMAC0) {
     // Set up direct memory access
     let rxburst = 4_u8; // RX DMA controller max memory transfer size in words
     let txburst = 4_u8; // If these are different sizes, unset fixed burst
-    emac.dmabusmod.modify(|_, w| w.fb().set_bit()); // Fixed burst mode (RX and TX are the same)
+    emac.dmabusmod.modify(|_, w| w.usp().clear_bit()); // RX and TX burst limits are the same
     emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // Alternate descriptor size
 
     // Burst transfer limits
@@ -92,4 +92,134 @@ pub fn emac_cfg(emac: &EMAC0) {
     emac.dmaopmode.modify(|_, w| w.tsf().set_bit());  // TX store-and-forward 
     emac.dmaopmode.modify(|_, w| w.ttc()._32());  // TX threshold
     emac.dmaopmode.modify(|_, w| w.rtc()._32());  // RX threshold
+}
+
+
+/// Configuration & TX/RX for EMAC0 peripheral using internal PHY
+pub struct EMACDriver {
+    // EMAC
+    emac: EMAC0,
+    system_clk_freq: PllOutputFrequency,
+    src_macaddr: [u8; 6],
+    speed: Speed,
+    checksum_offload: bool,
+    preamble_length: PreambleLength,
+    interframe_gap: InterFrameGap,
+    backoff_limit: BackOffLimit,
+    rx_store_fwd: bool,
+    tx_store_fwd: bool,
+    full_duplex: bool,
+    // EPHY
+    phy_mdix: bool,
+    phy_autonegotiate: bool,
+    // Direct Memory Access controller
+    tx_thresh: TXThresholdDMA,
+    rx_thresh: RXThresholdDMA,
+    rx_burst_size: BurstSizeDMA,
+    tx_burst_size: BurstSizeDMA,
+    // RX/TX structures
+
+}
+
+impl EMACDriver {
+    /// Configure hardware registers
+    fn cfg_hw(&self) {
+        
+    }
+
+    fn transmit(data: &[u8]) {
+
+    }
+
+    fn receive(data: &mut [u8]) {
+
+    }
+}
+
+/// Choices of speed standard.
+#[allow(missing_docs)]
+pub enum Speed {
+    _10,
+    _100
+}
+
+/// Choices of preamble length in bytes.
+/// 
+/// This is the number of alternating 0-1 bits transmitted at the start of each frame
+/// in order to synchronize clocks between the transmitter and receiver.
+#[allow(missing_docs)]
+pub enum PreambleLength {
+    _3,
+    _5,
+    _7
+}
+
+/// Choices of interframe gap length in bits.
+/// 
+/// This is the duration of radio-silence used to signal the end of a transmission frame.
+#[allow(missing_docs)]
+pub enum InterFrameGap {
+    _40,
+    _48,
+    _56,
+    _64,
+    _72,
+    _80,
+    _88,
+    _96
+}
+
+/// Choices of back-off limit in bits.
+/// 
+/// This is a cap on the rescheduling duration given by the exponential back-off algorithm
+/// in the event of repeated collisions during transmission.
+#[allow(missing_docs)]
+pub enum BackOffLimit {
+    _2,
+    _8,
+    _256,
+    _1024
+}
+
+/// TX memory transfer threshold for memory controller
+/// 
+/// This is the number of bytes in the buffer required to trigger a transfer.
+#[allow(missing_docs)]
+pub enum TXThresholdDMA {
+    _16,
+    _24,
+    _32,
+    _40,
+    _64,
+    _128,
+    _192,
+    _256
+}
+
+/// RX memory transfer threshold for memory controller
+/// 
+/// This is the number of bytes in the buffer required to trigger a transfer.
+#[allow(missing_docs)]
+pub enum RXThresholdDMA {
+    _32,
+    _64,
+    _96,
+    _128
+}
+
+/// RX memory transfer burst size in 32-bit words
+#[allow(missing_docs)]
+pub enum BurstSizeDMA {
+    // Settings that do not require 8x flag
+    _1,
+    _2,
+    _4,
+    _8,
+    _16,
+    _32,
+
+    // Settings that do require 8x flag
+    _64,
+    _128,
+    _256
 }

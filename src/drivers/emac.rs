@@ -135,7 +135,10 @@ impl EMACDriver {
     ///
     /// This must be done in a specific order - see docs for cfg_ephy
     fn cfg_emac(&self) {
-        // Set up direct memory access
+        // Assumptions
+        self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
+        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
+        self.emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // 8-word descriptor size
 
         // Burst transfer limits
         // Just using the values the mfr uses here - not sure what the tradeoffs are
@@ -170,13 +173,6 @@ impl EMACDriver {
             self.emac.dmabusmod.modify(|_, w| w.pbl().bits(txburst));
         };
 
-        // Set size of descriptors (TX/RX software buffer unit)
-        // Using 8-word size by default here to reduce configuration cases - it's a fine number
-        self.emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // Alternate descriptor size
-
-        // MII (communication between EMAC and EPHY)
-        self.emac.miiaddr.modify(|_, w| w.cr()._100_150()); // Set clock divider to match system
-
         // Disable interrupts (set interrupt masks)
         self.emac.mmcrxim.modify(|_, w| {
             w.algnerr()
@@ -199,19 +195,75 @@ impl EMACDriver {
                 .set_bit()
         }); // Mask all tx interrupts
 
+        // MII (communication between EMAC and EPHY)
+        match self.system_clk_freq {
+            // These are below the minimum and may cause hardware UB
+            PllOutputFrequency::_6mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
+            PllOutputFrequency::_12mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
+            // These are nominal
+            PllOutputFrequency::_24mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
+            PllOutputFrequency::_30mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
+            PllOutputFrequency::_48mhz => self.emac.miiaddr.modify(|_, w| w.cr()._35_60()),
+            PllOutputFrequency::_60mhz => self.emac.miiaddr.modify(|_, w| w.cr()._35_60()),
+            PllOutputFrequency::_120mhz => self.emac.miiaddr.modify(|_, w| w.cr()._100_150()),
+        }
+
         // Setup up EMAC transmission behavior
-        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
-        self.emac.cfg.modify(|_, w| w.ipc().set_bit()); // Checksum offload
-        self.emac.cfg.modify(|_, w| w.prelen()._7()); // 7-byte preamble
-        self.emac.cfg.modify(|_, w| w.ifg()._96()); // 96-bit iter-frame gap
-        self.emac.cfg.modify(|_, w| w.bl()._1024()); // 1024-bit back-off limit
-        self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
+        match self.checksum_offload {
+            true => self.emac.cfg.modify(|_, w| w.ipc().set_bit()), // Checksum offload
+            false => self.emac.cfg.modify(|_, w| w.ipc().clear_bit()), // Use software checksum
+        }
+        
+        match self.preamble_length {
+            PreambleLength::_3 => self.emac.cfg.modify(|_, w| w.prelen()._3()),
+            PreambleLength::_5 => self.emac.cfg.modify(|_, w| w.prelen()._5()),
+            PreambleLength::_7 => self.emac.cfg.modify(|_, w| w.prelen()._7()),
+        }
+        
+        match self.interframe_gap {
+            InterFrameGap::_40 => self.emac.cfg.modify(|_, w| w.ifg()._40()),
+            InterFrameGap::_48 => self.emac.cfg.modify(|_, w| w.ifg()._48()),
+            InterFrameGap::_56 => self.emac.cfg.modify(|_, w| w.ifg()._56()),
+            InterFrameGap::_64 => self.emac.cfg.modify(|_, w| w.ifg()._64()),
+            InterFrameGap::_72 => self.emac.cfg.modify(|_, w| w.ifg()._72()),
+            InterFrameGap::_80 => self.emac.cfg.modify(|_, w| w.ifg()._80()),
+            InterFrameGap::_88 => self.emac.cfg.modify(|_, w| w.ifg()._88()),
+            InterFrameGap::_96 => self.emac.cfg.modify(|_, w| w.ifg()._96()),
+        }
+        
+        match self.backoff_limit {
+            BackOffLimit::_2 => self.emac.cfg.modify(|_, w| w.bl()._2()),
+            BackOffLimit::_8 => self.emac.cfg.modify(|_, w| w.bl()._8()),
+            BackOffLimit::_256 => self.emac.cfg.modify(|_, w| w.bl()._256()),
+            BackOffLimit::_1024 => self.emac.cfg.modify(|_, w| w.bl()._1024()),
+        }
 
         // Set memory controller op mode
-        self.emac.dmaopmode.modify(|_, w| w.rsf().set_bit()); // RX store-and-forward
-        self.emac.dmaopmode.modify(|_, w| w.tsf().set_bit()); // TX store-and-forward
-        self.emac.dmaopmode.modify(|_, w| w.ttc()._32()); // TX threshold
-        self.emac.dmaopmode.modify(|_, w| w.rtc()._32()); // RX threshold
+        match self.rx_store_fwd {
+            true => self.emac.dmaopmode.modify(|_, w| w.rsf().set_bit()),
+            false => self.emac.dmaopmode.modify(|_, w| w.rsf().clear_bit()),
+        }
+        match self.tx_store_fwd {
+            true => self.emac.dmaopmode.modify(|_, w| w.tsf().set_bit()),
+            false => self.emac.dmaopmode.modify(|_, w| w.tsf().clear_bit()),
+        }
+        match self.tx_thresh {
+            TXThresholdDMA::_16 => self.emac.dmaopmode.modify(|_, w| w.ttc()._16()),
+            TXThresholdDMA::_24 => self.emac.dmaopmode.modify(|_, w| w.ttc()._24()),
+            TXThresholdDMA::_32 => self.emac.dmaopmode.modify(|_, w| w.ttc()._32()),
+            TXThresholdDMA::_40 => self.emac.dmaopmode.modify(|_, w| w.ttc()._40()),
+            TXThresholdDMA::_64 => self.emac.dmaopmode.modify(|_, w| w.ttc()._64()),
+            TXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.ttc()._128()),
+            TXThresholdDMA::_192 => self.emac.dmaopmode.modify(|_, w| w.ttc()._192()),
+            TXThresholdDMA::_256 => self.emac.dmaopmode.modify(|_, w| w.ttc()._256()),
+        }
+        match self.rx_thresh {
+            RXThresholdDMA::_32 => self.emac.dmaopmode.modify(|_, w| w.rtc()._32()),
+            RXThresholdDMA::_64 => self.emac.dmaopmode.modify(|_, w| w.rtc()._64()),
+            RXThresholdDMA::_96 => self.emac.dmaopmode.modify(|_, w| w.rtc()._96()),
+            RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
+        }
+
     }
 
     async fn transmit(data: &[u8]) {}

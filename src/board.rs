@@ -258,7 +258,11 @@ impl Board {
         );
         ephy_reset(&sysctl.power_control);
 
+        // Latching configuration
         drivers::emac::phy_cfg(&peripherals.EMAC0); // Use internal PHY in 100 base T mode
+        ephy_reset(&sysctl.power_control);  // Reset to latch configuration
+        emac_reset(&sysctl.power_control);  // Reset to latch configuration
+        // Non-latching configuration
         drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
         drivers::emac::emac_cfg(&peripherals.EMAC0); // Set up EMAC transmit/receive behavior
 

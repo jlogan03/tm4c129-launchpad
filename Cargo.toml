@@ -10,6 +10,7 @@ version = "0.1.1"
 description = "TM4C129-XL Launchpad board crate"
 repository = "https://github.com/jlogan03/tm4c129-launchpad"
 categories = ["hardware-support"]
+edition = "2021"
 
 [profile.release]
 opt-level = "s"  # Compiler optimization for minimum file size

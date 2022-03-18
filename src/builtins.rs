@@ -1,6 +1,6 @@
 //! Functions required by rustc/LLVM
 
-use board;
+use super::board;
 
 #[cfg(debug_assertions)]
 use core::panic::PanicInfo;

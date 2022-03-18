@@ -3,7 +3,7 @@
 use cortex_m;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 
-use board;
+use super::board;
 use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
 
 use core::fmt::Write;

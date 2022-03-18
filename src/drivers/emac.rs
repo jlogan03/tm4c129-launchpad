@@ -118,20 +118,33 @@ pub struct EMACDriver {
     rx_burst_size: BurstSizeDMA,
     tx_burst_size: BurstSizeDMA,
     // RX/TX structures
-
+    
 }
 
 impl EMACDriver {
-    /// Configure hardware registers
-    fn cfg_hw(&self) {
+    /// Configure PHY
+    /// 
+    /// This must be run before resetting phy, then resetting emac, then doing cfg_emac!!
+    /// 
+    /// The settings done here are not cleared by reset & must be latched with resets in the proper order
+    fn cfg_phy(&self) {
+        self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
+
+        match self.phy_mdix {
+            true => self.emac.pc.modify(|_, w| w.mdixen().set_bit()), // Enable MDIX
+            false => self.emac.pc.modify(|_, w| w.mdixen().clear_bit()), // Disable MDIX
+        }
         
+        self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
+        self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
+        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Duplex mode full
     }
 
-    fn transmit(data: &[u8]) {
+    async fn transmit(data: &[u8]) {
 
     }
 
-    fn receive(data: &mut [u8]) {
+    async fn receive(data: &mut [u8]) {
 
     }
 }

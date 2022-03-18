@@ -1,17 +1,22 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
-use tm4c129x_hal::tm4c129x::EMAC0;
+use tm4c129x_hal::tm4c129x::{EMAC0, FLASH_CTRL};
 
 /// Get preprogrammed MAC address from ROM
-pub fn get_rom_macaddr(emac: &EMAC0) -> [u8; 6] {
+pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     // Unpack address values from register structure
-    // They're stored as u16 (populating half a 32-bit register) and needed as u8
+    // They're stored as u32 in read-only flash memory programmed by the mfr
+    let addr0: [u8; 4] = flash.userreg0.read().bits().to_be_bytes();
+    let addr1: [u8; 4] = flash.userreg1.read().bits().to_be_bytes();
+
+    // Only the least-significant 3 bytes of each register are parts of the address,
+    // and they're stored in reverse order
     let addr: [u8; 6] = [
-        (&emac.addr0h).read().addrhi().bits() as u8,
-        (&emac.addr0l).read().addrlo().bits() as u8,
-        (&emac.addr1h).read().addrhi().bits() as u8,
-        (&emac.addr1l).read().addrlo().bits() as u8,
-        (&emac.addr2h).read().addrhi().bits() as u8,
-        (&emac.addr2l).read().addrlo().bits() as u8,
+        addr0[3],
+        addr0[2],
+        addr0[1],
+        addr1[3],
+        addr1[2],
+        addr1[1], 
     ];
 
     addr
@@ -26,32 +31,63 @@ pub fn phy_cfg(emac: &EMAC0) {
     emac.cfg.modify(|_, w| w.dupm().set_bit()); // Duplex mode full
 }
 
-///
+/// Configure EMAC memory controller and clock
+/// Assumes system clock is set to 120MHz
 pub fn emac_init(emac: &EMAC0) {
     // Set up direct memory access
     let rxburst = 4_u8; // RX DMA controller max memory transfer size in words
-    let txburst = 4_u8;
-
+    let txburst = 4_u8; // If these are different sizes, unset fixed burst
     emac.dmabusmod.modify(|_, w| w.fb().set_bit()); // Fixed burst mode (RX and TX are the same)
-    // emac.dmabusmod.modify(|_, w| w.txpr().set_bit());  // Fixed priority
     emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // Alternate descriptor size
 
-    unsafe {  // Only unsafe due to old-style conversion to 5-bit integer; could update upstream calc to be safe
-        // Burst transfer limits
-        // Just using the values the mfr uses here - not sure what the tradeoffs are
+    // Burst transfer limits
+    // Just using the values the mfr uses here - not sure what the tradeoffs are
+    // Pretty sure this is only unsafe due to old-style conversion
+    // to 5-bit integer; should be able to update upstream calc to be safe
+    unsafe {
         emac.dmabusmod.modify(|_, w| w.rpbl().bits(rxburst));
         emac.dmabusmod.modify(|_, w| w.pbl().bits(txburst));
     };
 
     // MII (communication between EMAC and EPHY)
-    emac.miiaddr.modify(|_, w| w.cr()._100_150()); // System clock speed 
+    emac.miiaddr.modify(|_, w| w.cr()._100_150()); // Set clock divider to match system
 
-
+    // Disable interrupts (set interrupt masks)
+    emac.mmcrxim.modify(|_, w| {
+        w.algnerr()
+            .set_bit()
+            .crcerr()
+            .set_bit()
+            .gbf()
+            .set_bit()
+            .ucgf()
+            .set_bit()
+    });  // Mask all rx interrupts
+    emac.mmctxim.modify(|_, w| {
+        w.gbf()
+            .set_bit()
+            .mcollgf()
+            .set_bit()
+            .octcnt()
+            .set_bit()
+            .scollgf()
+            .set_bit()
+    });  // Mask all tx interrupts
 }
 
-/// Configure EMAC (must run phy_cfg first, then reset before configuring EMAC!)
-pub fn emac_cfg(emac: &EMAC0) {}
+/// Configure EMAC (must run phy_cfg, reset, then emac_init, then reset, then run emac_cfg)
+pub fn emac_cfg(emac: &EMAC0) {
+    // Setup up EMAC transmission behavior
+    emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode
+    emac.cfg.modify(|_, w| w.ipc().set_bit()); // Checksum offload
+    emac.cfg.modify(|_, w| w.prelen()._7()); // 7-byte preamble
+    emac.cfg.modify(|_, w| w.ifg()._96()); // 96-bit iter-frame gap
+    emac.cfg.modify(|_, w| w.bl()._1024());  // 1024-bit back-off limit
+    emac.cfg.modify(|_, w| w.ps().set_bit());  // Set port select (req. for MII/RMII PHY interface)
 
-// pub struct EMACDriver {
-//     descripto
-// }
+    // Set memory controller op mode
+    emac.dmaopmode.modify(|_, w| w.rsf().set_bit());  // RX store-and-forward
+    emac.dmaopmode.modify(|_, w| w.tsf().set_bit());  // TX store-and-forward 
+    emac.dmaopmode.modify(|_, w| w.ttc()._32());  // TX threshold
+    emac.dmaopmode.modify(|_, w| w.rtc()._32());  // RX threshold
+}

@@ -10,16 +10,15 @@ extern crate tm4c129x_hal;
 
 use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use embedded_hal::digital::v2::*;  // GPIO set high/low
+use tm4c129_launchpad::{board, drivers::emac};
 use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
-use tm4c129_launchpad::{board, drivers::emac};
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) {
-
     let mut pins_a = board.GPIO_PORTA_AHB.split(&board.power_control);
     let mut uart = serial::Serial::uart0(
         board.UART0,
@@ -32,12 +31,9 @@ pub fn stellaris_main(mut board: board::Board) {
         board::clocks(),
         &board.power_control,
     );
-    let mut delay = tm4c129x_hal::delay::Delay::new(
-        board.core_peripherals.SYST,
-        board::clocks(),
-    );
+    let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
-    // let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.EMAC0);
+    let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.FLASH_CTRL);
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;
@@ -46,6 +42,12 @@ pub fn stellaris_main(mut board: board::Board) {
         writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
         while let Ok(ch) = uart.read() {
             writeln!(uart, "byte read {}", ch).unwrap_or_default();
+            writeln!(
+                uart,
+                "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}, ",
+                macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]
+            )
+            .unwrap_or_default();
         }
         loops = loops + 1;
 
@@ -71,6 +73,5 @@ pub fn stellaris_main(mut board: board::Board) {
             let _ = &(board.led0).set_high().unwrap_or_default();
             delay.delay_ms(250u32);
         }
-
     }
 }

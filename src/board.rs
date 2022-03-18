@@ -255,9 +255,14 @@ impl Board {
             RunMode::Run,
             PowerState::On,
         );
-        emac_reset(&sysctl.power_control); //   Reset to allow configuration
+        ephy_reset(&sysctl.power_control); //   Reset both to allow configuration
+        emac_reset(&sysctl.power_control);
         drivers::emac::phy_cfg(&peripherals.EMAC0); //   Use internal PHY in 100 base T mode
-        emac_reset(&sysctl.power_control); //   Reset to lock-in PHY configuration
+        ephy_reset(&sysctl.power_control); //   Reset EPHY to make sure it is ready to connect with EMAC
+        emac_reset(&sysctl.power_control); //   Reset EMAC to lock-in configuration
+        drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
+        emac_reset(&sysctl.power_control); //   Reset EMAC to lock-in configuration
+        
 
 
         Board {
@@ -371,23 +376,26 @@ pub fn safe() -> ! {
 }
 
 /// Reset EMAC and EPHY, then wait until they show ready status
-///
-/// EPHY is reset first so that it is ready to negotiate connection
-/// to EMAC when it comes out of reset
 fn emac_reset(power_control: &PowerControl) {
+    //   Get a handle to sysctl to check ready status
+    let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
+    // Reset EMAC, then wait until SYSCTL sets ready status
+    reset(power_control, Domain::Emac0);
+    loop {
+        if p.premac.read().r0().bit_is_set() {
+            break;
+        }
+    }
+}
+
+/// Reset EPHY, then wait until they show ready status
+fn ephy_reset(power_control: &PowerControl) {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
     //   Reset EPHY, then wait until SYSCTL sets ready status
     reset(power_control, Domain::Ephy0);
     loop {
         if p.prephy.read().r0().bit_is_set() {
-            break;
-        }
-    }
-    // Reset EMAC, then wait until SYSCTL sets ready status
-    reset(power_control, Domain::Emac0);
-    loop {
-        if p.premac.read().r0().bit_is_set() {
             break;
         }
     }

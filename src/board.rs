@@ -1,6 +1,5 @@
 //! Hardware definitions capturing the configuration of the board
 
-use cortex_m::peripheral;
 use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
@@ -8,9 +7,9 @@ use tm4c129x_hal::sysctl::{
     PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
 };
 use tm4c129x_hal::time::Hertz;
-use tm4c129x_hal::tm4c129x::EMAC0;
 
 use crate::drivers;
+use crate::drivers::emac::EMACDriver;
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -218,9 +217,10 @@ impl Board {
         }
 
         // Clocks
+        let system_clk_freq = PllOutputFrequency::_120mhz;
         sysctl.clock_setup.oscillator = Oscillator::Main(
             CrystalFrequency::_25mhz,
-            SystemClock::UsePll(PllOutputFrequency::_120mhz),
+            SystemClock::UsePll(system_clk_freq),
         );
         unsafe {
             CLOCKS = sysctl.clock_setup.freeze();
@@ -258,13 +258,31 @@ impl Board {
         );
         ephy_reset(&sysctl.power_control);
 
+        // Initialize EMAC driver
+        let macaddr = drivers::emac::get_rom_macaddr(&peripherals.FLASH_CTRL);
+        let emac = EMACDriver {
+            emac: &peripherals.EMAC0,
+            system_clk_freq: system_clk_freq,
+            src_macaddr: macaddr,
+            checksum_offload: true,
+            preamble_length: drivers::emac::PreambleLength::_7,
+            interframe_gap: drivers::emac::InterFrameGap::_96,
+            backoff_limit: drivers::emac::BackOffLimit::_1024,
+            rx_store_fwd: true,
+            tx_store_fwd: true,
+            rx_burst_size: drivers::emac::BurstSizeDMA::_4,
+            tx_burst_size: drivers::emac::BurstSizeDMA::_4,
+            rx_thresh: drivers::emac::RXThresholdDMA::_32,
+            tx_thresh: drivers::emac::TXThresholdDMA::_32
+        };
         // Latching configuration
-        drivers::emac::phy_cfg(&peripherals.EMAC0); // Use internal PHY in 100 base T mode
+        emac.cfg_ephy();
         ephy_reset(&sysctl.power_control);  // Reset to latch configuration
         emac_reset(&sysctl.power_control);  // Reset to latch configuration
         // Non-latching configuration
-        drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
-        drivers::emac::emac_cfg(&peripherals.EMAC0); // Set up EMAC transmit/receive behavior
+        emac.cfg_emac();
+        // drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
+        // drivers::emac::emac_cfg(&peripherals.EMAC0); // Set up EMAC transmit/receive behavior
 
         Board {
             core_peripherals,

@@ -18,112 +18,53 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     addr
 }
 
-/// Configure EMAC to use internal PHY & configure internal PHY
-pub fn phy_cfg(emac: &EMAC0) {
-    emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
-    emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
-    emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
-    emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
-    emac.cfg.modify(|_, w| w.dupm().set_bit()); // Duplex mode full
-}
-
-/// Configure EMAC memory controller and clock
-/// Assumes system clock is set to 120MHz
-pub fn emac_init(emac: &EMAC0) {
-    // Set up direct memory access
-    let rxburst = 4_u8; // RX DMA controller max memory transfer size in words
-    let txburst = 4_u8; // If these are different sizes, unset fixed burst
-    emac.dmabusmod.modify(|_, w| w.usp().clear_bit()); // RX and TX burst limits are the same
-    emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // Alternate descriptor size
-
-    // Burst transfer limits
-    // Just using the values the mfr uses here - not sure what the tradeoffs are
-    // Pretty sure this is only unsafe due to old-style conversion
-    // to 5-bit integer; should be able to update upstream calc to be safe
-    unsafe {
-        emac.dmabusmod.modify(|_, w| w.rpbl().bits(rxburst));
-        emac.dmabusmod.modify(|_, w| w.pbl().bits(txburst));
-    };
-
-    // MII (communication between EMAC and EPHY)
-    emac.miiaddr.modify(|_, w| w.cr()._100_150()); // Set clock divider to match system
-
-    // Disable interrupts (set interrupt masks)
-    emac.mmcrxim.modify(|_, w| {
-        w.algnerr()
-            .set_bit()
-            .crcerr()
-            .set_bit()
-            .gbf()
-            .set_bit()
-            .ucgf()
-            .set_bit()
-    }); // Mask all rx interrupts
-    emac.mmctxim.modify(|_, w| {
-        w.gbf()
-            .set_bit()
-            .mcollgf()
-            .set_bit()
-            .octcnt()
-            .set_bit()
-            .scollgf()
-            .set_bit()
-    }); // Mask all tx interrupts
-}
-
-/// Configure EMAC (must run phy_cfg, reset, then emac_init, then reset, then run emac_cfg)
-/// Note this configures to use the processor-offloaded ethernet checksum generator and IP/UDP
-/// checksum validator - ethernet frames should be given with the checksum zeroed-out
-pub fn emac_cfg(emac: &EMAC0) {
-    // Setup up EMAC transmission behavior
-    emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode
-    emac.cfg.modify(|_, w| w.ipc().set_bit()); // Checksum offload
-    emac.cfg.modify(|_, w| w.prelen()._7()); // 7-byte preamble
-    emac.cfg.modify(|_, w| w.ifg()._96()); // 96-bit iter-frame gap
-    emac.cfg.modify(|_, w| w.bl()._1024()); // 1024-bit back-off limit
-    emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
-
-    // Set memory controller op mode
-    emac.dmaopmode.modify(|_, w| w.rsf().set_bit()); // RX store-and-forward
-    emac.dmaopmode.modify(|_, w| w.tsf().set_bit()); // TX store-and-forward
-    emac.dmaopmode.modify(|_, w| w.ttc()._32()); // TX threshold
-    emac.dmaopmode.modify(|_, w| w.rtc()._32()); // RX threshold
-}
-
 /// Configuration & TX/RX for EMAC0 peripheral using internal PHY
 /// 
 /// Assumes speed is 100 base T, using internal PHY, PHY uses MDIX and autonegotiation, 
 /// 8-word descriptor size, mmc interrupts all masked, full duplex mode
-pub struct EMACDriver {
+pub struct EMACDriver<'a> {
     // EMAC
-    emac: EMAC0,
-    system_clk_freq: PllOutputFrequency,
-    src_macaddr: [u8; 6],
-    checksum_offload: bool,
-    preamble_length: PreambleLength,
-    interframe_gap: InterFrameGap,
-    backoff_limit: BackOffLimit,
-    rx_store_fwd: bool,
-    tx_store_fwd: bool,
+    /// EMAC peripheral
+    pub emac: &'a EMAC0,
+    /// System clock frequency
+    pub system_clk_freq: PllOutputFrequency,
+    /// Source mac address
+    pub src_macaddr: [u8; 6],
+    /// Use processor-offloaded checksum calc peripheral
+    pub checksum_offload: bool,
+    /// Clock-sync preamble length
+    pub preamble_length: PreambleLength,
+    /// Inter-frame silence duration in bits
+    pub interframe_gap: InterFrameGap,
+    /// Exponential backoff saturation limit
+    pub backoff_limit: BackOffLimit,
+    /// RX store-and-forward
+    pub rx_store_fwd: bool,
+    /// TX store-and-forward
+    pub tx_store_fwd: bool,
     // EPHY
     // phy_mdix: bool,
     // phy_autonegotiate: bool,
     // Direct Memory Access controller
-    tx_thresh: TXThresholdDMA,
-    rx_thresh: RXThresholdDMA,
-    rx_burst_size: BurstSizeDMA,
-    tx_burst_size: BurstSizeDMA,
+    /// TX DMA transfer threshold
+    pub tx_thresh: TXThresholdDMA,
+    /// RX DMA transfer threshold
+    pub rx_thresh: RXThresholdDMA,
+    /// RX DMA burst size
+    pub rx_burst_size: BurstSizeDMA,
+    /// TX DMA burst size
+    pub tx_burst_size: BurstSizeDMA,
     // RX/TX structures
     // rx_descriptor
 }
 
-impl EMACDriver {
+impl EMACDriver<'_> {
     /// Configure PHY
     ///
     /// This must be run before resetting phy, then resetting emac, then doing cfg_emac!!
     ///
     /// The settings done here are not cleared by reset & must be latched with resets in the proper order
-    fn cfg_ephy(&self) {
+    pub fn cfg_ephy(&self) {
         self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
         self.emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
         self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
@@ -134,7 +75,7 @@ impl EMACDriver {
     /// Configure EMAC
     ///
     /// This must be done in a specific order - see docs for cfg_ephy
-    fn cfg_emac(&self) {
+    pub fn cfg_emac(&self) {
         // Assumptions
         self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
@@ -266,9 +207,11 @@ impl EMACDriver {
 
     }
 
-    async fn transmit(data: &[u8]) {}
+    /// Send raw data
+    pub async fn transmit(data: &[u8]) {}
 
-    async fn receive(data: &mut [u8]) {}
+    /// Receive raw data
+    pub async fn receive(data: &mut [u8]) {}
 }
 
 /// Choices of speed standard.

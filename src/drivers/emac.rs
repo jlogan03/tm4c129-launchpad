@@ -76,6 +76,8 @@ pub fn emac_init(emac: &EMAC0) {
 }
 
 /// Configure EMAC (must run phy_cfg, reset, then emac_init, then reset, then run emac_cfg)
+/// Note this configures to use the processor-offloaded ethernet checksum generator and IP/UDP
+/// checksum validator - ethernet frames should be given with the checksum zeroed-out
 pub fn emac_cfg(emac: &EMAC0) {
     // Setup up EMAC transmission behavior
     emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode

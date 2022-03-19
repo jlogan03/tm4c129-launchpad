@@ -22,10 +22,10 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, mmc interrupts all masked, full duplex mode
-pub struct EMACDriver<'a> {
+pub struct EMACDriver {
     // EMAC
     /// EMAC peripheral
-    pub emac: &'a EMAC0,
+    pub emac: EMAC0,
     /// System clock frequency
     pub system_clk_freq: PllOutputFrequency,
     /// Source mac address
@@ -58,7 +58,7 @@ pub struct EMACDriver<'a> {
     // rx_descriptor
 }
 
-impl EMACDriver<'_> {
+impl EMACDriver {
     /// Send raw ethernet frame that includes destination address, etc.
     pub async fn transmit(data: &[u8]) {}
 

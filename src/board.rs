@@ -23,10 +23,11 @@ pub enum Button {
 /// Hardware definitions for the TM4C129-XL Launchpad board
 #[allow(non_snake_case)]
 pub struct Board {
-    /// The core peripherals on the LM4F120 / TM4C1233
+    /// The core peripherals on the TM4C129x
     pub core_peripherals: tm4c129x_hal::CorePeripherals,
-    /// Power gating for peripherals in the LM4F120 / TM4C1233
+    /// Power gating for peripherals in the TM4C129x
     pub power_control: tm4c129x_hal::sysctl::PowerControl,
+
     /// LED D1
     pub led0: PN1<Output<PushPull>>,
     /// LED D2
@@ -47,6 +48,9 @@ pub struct Board {
     pub portn_control: tm4c129x_hal::gpio::gpion::GpioControl,
     /// GPIO control for GPIO port J
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
+
+    /// EMAC driver
+    pub emac: EMACDriver, 
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -179,8 +183,8 @@ pub struct Board {
     pub UDMA: tm4c129x_hal::tm4c129x::UDMA,
     #[doc = "EPI0"]
     pub EPI0: tm4c129x_hal::tm4c129x::EPI0,
-    #[doc = "EMAC0"]
-    pub EMAC0: tm4c129x_hal::tm4c129x::EMAC0,
+    // #[doc = "EMAC0"]
+    // pub EMAC0: tm4c129x_hal::tm4c129x::EMAC0,  // Consumed by EMACDriver
 }
 
 /// Clock speed defaults
@@ -261,7 +265,7 @@ impl Board {
         // Initialize EMAC driver
         let macaddr = drivers::emac::get_rom_macaddr(&peripherals.FLASH_CTRL);
         let emac = EMACDriver {
-            emac: &peripherals.EMAC0,
+            emac: peripherals.EMAC0,
             system_clk_freq: system_clk_freq,
             src_macaddr: macaddr,
             checksum_offload: true,
@@ -297,6 +301,8 @@ impl Board {
             portf_control: pins_gpiof.control,
             portn_control: pins_gpion.control,
             portj_control: pins_gpioj.control,
+
+            emac,
 
             // ----------------------------------
             WATCHDOG0: peripherals.WATCHDOG0,
@@ -369,7 +375,7 @@ impl Board {
             FLASH_CTRL: peripherals.FLASH_CTRL,
             UDMA: peripherals.UDMA,
             EPI0: peripherals.EPI0,
-            EMAC0: peripherals.EMAC0,
+            // EMAC0: peripherals.EMAC0,
         }
     }
 }

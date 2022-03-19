@@ -4,6 +4,12 @@ use tm4c129x_hal::{
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
+/// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init have the correct effects
+pub(crate) struct EmacR;
+
+/// Empty type to guarantee that the ephy_reset closure passed to EMACDriver::init have the correct effects
+pub(crate) struct EphyR;
+
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     // Unpack address values from register structure
@@ -74,10 +80,10 @@ impl EMACDriver {
     /// ephy_reset must be a closure that resets the EPHY peripheral, then waits until its ready flag is high
     /// 
     /// emac_reset must do the same for the EMAC0 peripheral
-    pub fn init<F, G>(&self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
+    pub(crate) fn init<F, G>(&self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
     where
-        F: Fn(&PowerControl),
-        G: Fn(&PowerControl),
+        F: Fn(&PowerControl) -> EphyR,
+        G: Fn(&PowerControl) -> EmacR,
     {
         // -------------------- LATCHING CONFIGURATION ------------------------
         // Some of this configuration survives peripheral reset & takes effect after reset

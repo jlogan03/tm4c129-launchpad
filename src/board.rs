@@ -9,7 +9,7 @@ use tm4c129x_hal::sysctl::{
 use tm4c129x_hal::time::Hertz;
 
 use crate::drivers;
-use crate::drivers::emac::EMACDriver;
+use crate::drivers::emac::{EMACDriver, EphyR, EmacR};
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -398,27 +398,29 @@ pub fn safe() -> ! {
 }
 
 /// Reset EMAC, then wait until it shows ready status
-fn emac_reset(power_control: &PowerControl) {
+fn emac_reset(power_control: &PowerControl) -> EmacR {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
     // Reset EMAC, then wait until SYSCTL sets ready status
     reset(power_control, Domain::Emac0);
     loop {
         if p.premac.read().r0().bit_is_set() {
-            break;
+            let emacr: EmacR = EmacR{};
+            return emacr
         }
     }
 }
 
 /// Reset EPHY, then wait until it shows ready status
-fn ephy_reset(power_control: &PowerControl) {
+fn ephy_reset(power_control: &PowerControl) -> EphyR {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
     //   Reset EPHY, then wait until SYSCTL sets ready status
     reset(power_control, Domain::Ephy0);
     loop {
         if p.prephy.read().r0().bit_is_set() {
-            break;
+            let ephyr: EphyR = EphyR{};
+            return ephyr
         }
     }
 }

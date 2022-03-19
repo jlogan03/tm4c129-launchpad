@@ -4,6 +4,8 @@ use tm4c129x_hal::{
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
+use volatile::Volatile;
+
 /// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init have the correct effects
 pub(crate) struct EmacR;
 
@@ -325,16 +327,22 @@ pub enum BurstSizeDMA {
 /// TX "dexcriptor" structure is the software interface with the direct memory access controller
 /// 
 /// Use transparent representation so that it is stored as a contiguous array in memory instead 
-/// of as a struct, which provides guaranteed memory layout without complicated machinery
+/// of as a struct, which provides guaranteed memory layout without complicated machinery.
+/// Volatile<T> also uses transparent representation matching T, so the accumulated representation
+/// is still just a contiguous array of u8.
 /// 
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config)
 #[repr(transparent)]
 struct TXDescriptor {
-    data: [u8; 8 * 4]
+    /// Descriptor data is volatile because it is cleared 
+    /// by the DMA controller and must be checked by the EMAC driver.
+    data: Volatile<[u8; 4 * 8]>
 }
 
 
 #[repr(transparent)]
 struct RXDescriptor {
-    data: [u8; 8 * 4]
+    /// Descriptor data is volatile because it is cleared 
+    /// by the DMA controller and must be checked by the EMAC driver
+    data: Volatile<[u8; 4 * 8]>
 }

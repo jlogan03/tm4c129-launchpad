@@ -237,13 +237,6 @@ impl EMACDriver {
     }
 }
 
-/// Choices of speed standard.
-// #[allow(missing_docs)]
-// pub enum Speed {
-//     _10,
-//     _100,
-// }
-
 /// Choices of preamble length in bytes.
 ///
 /// This is the number of alternating 0-1 bits transmitted at the start of each frame
@@ -326,4 +319,22 @@ pub enum BurstSizeDMA {
     // _64,
     // _128,
     // _256,
+}
+
+
+/// TX "dexcriptor" structure is the software interface with the direct memory access controller
+/// 
+/// Use transparent representation so that it is stored as a contiguous array in memory instead 
+/// of as a struct, which provides guaranteed memory layout without complicated machinery
+/// 
+/// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config)
+#[repr(transparent)]
+struct TXDescriptor {
+    data: [u8; 8 * 4]
+}
+
+
+#[repr(transparent)]
+struct RXDescriptor {
+    data: [u8; 8 * 4]
 }

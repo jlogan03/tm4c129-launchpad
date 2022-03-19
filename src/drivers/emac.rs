@@ -74,13 +74,13 @@ impl EMACDriver {
     pub async fn receive(data: &mut [u8]) {}
 
     /// 1. Reset to clear configuration
-    /// 
+    ///
     /// 2. Set latching configuration & reset so that it takes effect
-    /// 
+    ///
     /// 3. Apply non-latching configuration
-    /// 
+    ///
     /// ephy_reset must be a closure that resets the EPHY peripheral, then waits until its ready flag is high
-    /// 
+    ///
     /// emac_reset must do the same for the EMAC0 peripheral
     pub(crate) fn init<F, G>(&self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
     where
@@ -323,26 +323,35 @@ pub enum BurstSizeDMA {
     // _256,
 }
 
-
-/// TX "dexcriptor" structure is the software interface with the direct memory access controller
-/// 
-/// Use transparent representation so that it is stored as a contiguous array in memory instead 
+/// "Descriptor" structure is the software interface with the direct memory access controller.
+/// Hardware interprets descriptors as members of a linked list, with the last word being a pointer
+/// to the next entry in the list.
+///
+/// Use transparent representation so that it is stored as a contiguous array in memory instead
 /// of as a struct, which provides guaranteed memory layout without complicated machinery.
 /// Volatile<T> also uses transparent representation matching T, so the accumulated representation
 /// is still just a contiguous array of u8.
-/// 
-/// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config)
+///
+/// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
 #[repr(transparent)]
-struct TXDescriptor {
-    /// Descriptor data is volatile because it is cleared 
+struct Descriptor {
+    /// Descriptor data is volatile because it is cleared
     /// by the DMA controller and must be checked by the EMAC driver.
-    data: Volatile<[u8; 4 * 8]>
+    data: Volatile<[u8; 4 * 8]>,
 }
 
+/// Circular singly-linked transmit buffer.
+struct TXDescriptorList<const N: usize> {
+    /// Contiguous array of descriptors
+    descriptors: Volatile<[Descriptor; N]>,
+    /// Current descriptor
+    i: usize,
+}
 
-#[repr(transparent)]
-struct RXDescriptor {
-    /// Descriptor data is volatile because it is cleared 
-    /// by the DMA controller and must be checked by the EMAC driver
-    data: Volatile<[u8; 4 * 8]>
+/// Circular singly-linked receive buffer.
+struct RXDescriptorList<const N: usize> {
+    /// Contiguous array of descriptors
+    descriptors: Volatile<[Descriptor; N]>,
+    /// Current descriptor
+    i: usize,
 }

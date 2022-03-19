@@ -113,6 +113,19 @@ impl EMACDriver {
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
         self.emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // 8-word descriptor size
 
+        // Set MAC address
+        // Per mfr, addr0l must be set last because writing that register is the trigger
+        // to latch the new address in hardware.
+        unsafe {
+            let addr = self.src_macaddr;
+            self.emac.addr2h.modify(|_, w| w.addrhi().bits(addr[4] as u16));
+            self.emac.addr2l.modify(|_, w| w.addrlo().bits(addr[5] as u32));
+            self.emac.addr1h.modify(|_, w| w.addrhi().bits(addr[2] as u16));
+            self.emac.addr1l.modify(|_, w| w.addrlo().bits(addr[3] as u32));
+            self.emac.addr0h.modify(|_, w| w.addrhi().bits(addr[1] as u16));
+            self.emac.addr0l.modify(|_, w| w.addrlo().bits(addr[0] as u32));
+        }
+
         // Burst transfer limits
         // Just using the values the mfr uses here - not sure what the tradeoffs are
         // Pretty sure this is only unsafe due to old-style conversion

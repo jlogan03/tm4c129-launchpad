@@ -273,16 +273,13 @@ impl Board {
             rx_burst_size: drivers::emac::BurstSizeDMA::_4,
             tx_burst_size: drivers::emac::BurstSizeDMA::_4,
             rx_thresh: drivers::emac::RXThresholdDMA::_32,
-            tx_thresh: drivers::emac::TXThresholdDMA::_32
+            tx_thresh: drivers::emac::TXThresholdDMA::_32,
         };
-        // Latching configuration
-        emac.cfg_ephy();
-        ephy_reset(&sysctl.power_control);  // Reset to latch configuration
-        emac_reset(&sysctl.power_control);  // Reset to latch configuration
-        // Non-latching configuration
-        emac.cfg_emac();
-        // drivers::emac::emac_init(&peripherals.EMAC0); // Set up EMAC memory controller and clock
-        // drivers::emac::emac_cfg(&peripherals.EMAC0); // Set up EMAC transmit/receive behavior
+        emac.init(
+            &sysctl.power_control,
+            |pc| ephy_reset(pc),
+            |pc| emac_reset(pc),
+        );
 
         Board {
             core_peripherals,
@@ -394,7 +391,7 @@ pub fn safe() -> ! {
     }
 }
 
-/// Reset EMAC and EPHY, then wait until they show ready status
+/// Reset EMAC, then wait until it shows ready status
 fn emac_reset(power_control: &PowerControl) {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
@@ -407,7 +404,7 @@ fn emac_reset(power_control: &PowerControl) {
     }
 }
 
-/// Reset EPHY, then wait until they show ready status
+/// Reset EPHY, then wait until it shows ready status
 fn ephy_reset(power_control: &PowerControl) {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };

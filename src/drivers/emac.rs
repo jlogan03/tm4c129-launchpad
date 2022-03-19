@@ -1,6 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 use tm4c129x_hal::{
-    sysctl::PllOutputFrequency,
+    sysctl::{PllOutputFrequency, PowerControl},
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
@@ -19,8 +19,8 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 }
 
 /// Configuration & TX/RX for EMAC0 peripheral using internal PHY
-/// 
-/// Assumes speed is 100 base T, using internal PHY, PHY uses MDIX and autonegotiation, 
+///
+/// Assumes speed is 100 base T, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, mmc interrupts all masked, full duplex mode
 pub struct EMACDriver<'a> {
     // EMAC
@@ -59,23 +59,47 @@ pub struct EMACDriver<'a> {
 }
 
 impl EMACDriver<'_> {
-    /// Configure PHY
-    ///
-    /// This must be run before resetting phy, then resetting emac, then doing cfg_emac!!
-    ///
-    /// The settings done here are not cleared by reset & must be latched with resets in the proper order
-    pub fn cfg_ephy(&self) {
+    /// Send raw ethernet frame that includes destination address, etc.
+    pub async fn transmit(data: &[u8]) {}
+
+    /// Receive raw data
+    pub async fn receive(data: &mut [u8]) {}
+
+    /// 1. Reset to clear configuration
+    /// 
+    /// 2. Set latching configuration & reset so that it takes effect
+    /// 
+    /// 3. Apply non-latching configuration
+    /// 
+    /// ephy_reset must be a closure that resets the EPHY peripheral, then waits until its ready flag is high
+    /// 
+    /// emac_reset must do the same for the EMAC0 peripheral
+    pub fn init<F, G>(&self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
+    where
+        F: Fn(&PowerControl),
+        G: Fn(&PowerControl),
+    {
+        // -------------------- LATCHING CONFIGURATION ------------------------
+        // Some of this configuration survives peripheral reset & takes effect after reset
+
+        // Reset PHY then MAC to clear configuration
+        ephy_reset(pc);
+        emac_reset(pc);
+
+        // Assumptions
         self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
         self.emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
         self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
         self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
-        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Duplex mode full
-    }
+        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode
 
-    /// Configure EMAC
-    ///
-    /// This must be done in a specific order - see docs for cfg_ephy
-    pub fn cfg_emac(&self) {
+        // Reset PHY then MAC to latch configuration
+        ephy_reset(pc);
+        emac_reset(pc);
+
+        // -------------------- NON-LATCHING CONFIGURATION --------------------
+        // This configuration is cleared on peripheral reset and takes effect more-or-less immediately during operation
+
         // Assumptions
         self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
@@ -103,10 +127,10 @@ impl EMACDriver<'_> {
             BurstSizeDMA::_16 => 16,
             BurstSizeDMA::_32 => 32,
         }; // If these are different sizes, unset fixed burst
-        // Set flag for whether programmable burst limits are the same for RX and TX
+           // Set flag for whether programmable burst limits are the same for RX and TX
         match rxburst == txburst {
             true => self.emac.dmabusmod.modify(|_, w| w.usp().clear_bit()), // RX and TX burst limits are the same
-            false => self.emac.dmabusmod.modify(|_, w| w.usp().set_bit()) // RX and TX burst limits are different
+            false => self.emac.dmabusmod.modify(|_, w| w.usp().set_bit()), // RX and TX burst limits are different
         }
         // Set actual programmable burst limits
         unsafe {
@@ -154,13 +178,13 @@ impl EMACDriver<'_> {
             true => self.emac.cfg.modify(|_, w| w.ipc().set_bit()), // Checksum offload
             false => self.emac.cfg.modify(|_, w| w.ipc().clear_bit()), // Use software checksum
         }
-        
+
         match self.preamble_length {
             PreambleLength::_3 => self.emac.cfg.modify(|_, w| w.prelen()._3()),
             PreambleLength::_5 => self.emac.cfg.modify(|_, w| w.prelen()._5()),
             PreambleLength::_7 => self.emac.cfg.modify(|_, w| w.prelen()._7()),
         }
-        
+
         match self.interframe_gap {
             InterFrameGap::_40 => self.emac.cfg.modify(|_, w| w.ifg()._40()),
             InterFrameGap::_48 => self.emac.cfg.modify(|_, w| w.ifg()._48()),
@@ -171,7 +195,7 @@ impl EMACDriver<'_> {
             InterFrameGap::_88 => self.emac.cfg.modify(|_, w| w.ifg()._88()),
             InterFrameGap::_96 => self.emac.cfg.modify(|_, w| w.ifg()._96()),
         }
-        
+
         match self.backoff_limit {
             BackOffLimit::_2 => self.emac.cfg.modify(|_, w| w.bl()._2()),
             BackOffLimit::_8 => self.emac.cfg.modify(|_, w| w.bl()._8()),
@@ -204,14 +228,7 @@ impl EMACDriver<'_> {
             RXThresholdDMA::_96 => self.emac.dmaopmode.modify(|_, w| w.rtc()._96()),
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
-
     }
-
-    /// Send raw data
-    pub async fn transmit(data: &[u8]) {}
-
-    /// Receive raw data
-    pub async fn receive(data: &mut [u8]) {}
 }
 
 /// Choices of speed standard.
@@ -295,7 +312,6 @@ pub enum BurstSizeDMA {
     _8,
     _16,
     _32,
-
     // Settings that do require 8x flag
     // The 8x flag must match both RX and TX burst size, which introduces complicated logic
     // that is difficult to implement without introducing panic branches or unexpected behavior

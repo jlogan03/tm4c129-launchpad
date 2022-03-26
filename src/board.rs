@@ -1,5 +1,4 @@
 //! Hardware definitions capturing the configuration of the board
-
 use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
@@ -7,6 +6,7 @@ use tm4c129x_hal::sysctl::{
     PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
 };
 use tm4c129x_hal::time::Hertz;
+use volatile::Volatile;
 
 use crate::drivers;
 use crate::drivers::emac::{EMACDriver, EphyR, EmacR};
@@ -19,6 +19,19 @@ pub enum Button {
     /// SW2
     Two,
 }
+
+// Ethernet buffers must be static
+//     Constants describing ethernet buffer sizes
+const M: usize = 10;  // Ethernet TX buffer segment length in bytes
+const N: usize = 12;  // Ethernet TX number of buffer segments 
+const P: usize = 10;  // Ethernet RX buffer segment length in bytes
+const Q: usize = 12;  // Ethernet RX number of buffer segments 
+//     Ethernet buffer data
+static mut TX_DESCRIPTOR_DATA: [u32; 8 * N] = [0_u32; 8 * N];
+static mut TX_BUFFER_DATA: [u8; M * N] = [0_u8; M * N];
+static mut RX_DESCRIPTOR_DATA: [u32; 8 * N] = [0_u32; 8 * Q];
+static mut RX_BUFFER_DATA: [u8; M * N] = [0_u8; P * Q];
+
 
 /// Hardware definitions for the TM4C129-XL Launchpad board
 #[allow(non_snake_case)]
@@ -50,7 +63,7 @@ pub struct Board {
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub emac: EMACDriver, 
+    pub emac: EMACDriver<'static, M, N, P, Q>, 
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -199,6 +212,7 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
+
     // Initialize peripherals
     pub(crate) fn new() -> Board {
         let core_peripherals = match tm4c129x_hal::CorePeripherals::take() {
@@ -278,6 +292,11 @@ impl Board {
             tx_burst_size: drivers::emac::BurstSizeDMA::_4,
             rx_thresh: drivers::emac::RXThresholdDMA::_32,
             tx_thresh: drivers::emac::TXThresholdDMA::_32,
+
+            tx_descriptors: unsafe{Volatile::new(&mut TX_DESCRIPTOR_DATA)},
+            tx_buffers: unsafe{Volatile::new(&mut TX_BUFFER_DATA)},
+            rx_descriptors: unsafe{Volatile::new(&mut RX_DESCRIPTOR_DATA)},
+            rx_buffers: unsafe{Volatile::new(&mut RX_BUFFER_DATA)},
         };
         emac.init(
             &sysctl.power_control,

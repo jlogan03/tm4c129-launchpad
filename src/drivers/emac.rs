@@ -16,23 +16,27 @@ pub(crate) struct EphyR;
 pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     // Unpack address values from register structure
     // They're stored as u32 in read-only flash memory programmed by the mfr
-    let addr0: [u8; 4] = flash.userreg0.read().bits().to_be_bytes();
-    let addr1: [u8; 4] = flash.userreg1.read().bits().to_be_bytes();
-
     // Only the least-significant 3 bytes of each register are parts of the address,
     // and they're stored in reverse order
+    let addr0: [u8; 4] = flash.userreg0.read().bits().to_be_bytes();
+    let addr1: [u8; 4] = flash.userreg1.read().bits().to_be_bytes();
     let addr: [u8; 6] = [addr0[3], addr0[2], addr0[1], addr1[3], addr1[2], addr1[1]];
-
     addr
 }
 
-/// Configuration & TX/RX for EMAC0 peripheral using internal PHY
+/// Configuration & TX/RX for EMAC0 peripheral
 ///
-/// Assumes speed is 100 base T, using internal PHY, PHY uses MDIX and autonegotiation,
-/// 8-word descriptor size, mmc interrupts all masked, full duplex mode
-pub struct EMACDriver {
+/// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
+/// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
+pub struct EMACDriver<'a, const M: usize, const N: usize, const P: usize, const Q: usize>
+where
+    [u32; 8 * N]:,
+    [u8; M * N]:,
+    [u32; 8 * Q]:,
+    [u8; P * Q]:,
+{
     // EMAC
-    /// EMAC peripheral
+    /// EMAC peripheral registers
     pub emac: EMAC0,
     /// System clock frequency
     pub system_clk_freq: PllOutputFrequency,
@@ -50,9 +54,7 @@ pub struct EMACDriver {
     pub rx_store_fwd: bool,
     /// TX store-and-forward
     pub tx_store_fwd: bool,
-    // EPHY
-    // phy_mdix: bool,
-    // phy_autonegotiate: bool,
+
     // Direct Memory Access controller
     /// TX DMA transfer threshold
     pub tx_thresh: TXThresholdDMA,
@@ -62,11 +64,25 @@ pub struct EMACDriver {
     pub rx_burst_size: BurstSizeDMA,
     /// TX DMA burst size
     pub tx_burst_size: BurstSizeDMA,
+
     // RX/TX structures
-    // rx_descriptor
+    /// Volatile access to TX buffer descriptors
+    pub tx_descriptors: Volatile<&'a mut [u32; 8 * N]>,
+    /// Volatile access to TX buffer data
+    pub tx_buffers: Volatile<&'a mut [u8; M * N]>,
+    /// Volatile access to RX buffer descriptors
+    pub rx_descriptors: Volatile<&'a mut [u32; 8 * Q]>,
+    /// Volatile access to RX buffer data
+    pub rx_buffers: Volatile<&'a mut [u8; P * Q]>,
 }
 
-impl EMACDriver {
+impl<'a, const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<'a, M, N, P, Q>
+where
+    [u32; 8 * N]:,
+    [u8; M * N]:,
+    [u32; 8 * Q]:,
+    [u8; P * Q]:,
+{
     /// Send raw ethernet frame that includes destination address, etc.
     pub async fn transmit(data: &[u8]) {}
 
@@ -78,10 +94,6 @@ impl EMACDriver {
     /// 2. Set latching configuration & reset so that it takes effect
     ///
     /// 3. Apply non-latching configuration
-    ///
-    /// ephy_reset must be a closure that resets the EPHY peripheral, then waits until its ready flag is high
-    ///
-    /// emac_reset must do the same for the EMAC0 peripheral
     pub(crate) fn init<F, G>(&self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
     where
         F: Fn(&PowerControl) -> EphyR,
@@ -118,16 +130,28 @@ impl EMACDriver {
         // to latch the new address in hardware.
         unsafe {
             let addr = self.src_macaddr;
-            self.emac.addr2h.modify(|_, w| w.addrhi().bits(addr[4] as u16));
-            self.emac.addr2l.modify(|_, w| w.addrlo().bits(addr[5] as u32));
-            self.emac.addr1h.modify(|_, w| w.addrhi().bits(addr[2] as u16));
-            self.emac.addr1l.modify(|_, w| w.addrlo().bits(addr[3] as u32));
-            self.emac.addr0h.modify(|_, w| w.addrhi().bits(addr[1] as u16));
-            self.emac.addr0l.modify(|_, w| w.addrlo().bits(addr[0] as u32));
+            self.emac
+                .addr2h
+                .modify(|_, w| w.addrhi().bits(addr[4] as u16));
+            self.emac
+                .addr2l
+                .modify(|_, w| w.addrlo().bits(addr[5] as u32));
+            self.emac
+                .addr1h
+                .modify(|_, w| w.addrhi().bits(addr[2] as u16));
+            self.emac
+                .addr1l
+                .modify(|_, w| w.addrlo().bits(addr[3] as u32));
+            self.emac
+                .addr0h
+                .modify(|_, w| w.addrhi().bits(addr[1] as u16));
+            self.emac
+                .addr0l
+                .modify(|_, w| w.addrlo().bits(addr[0] as u32));
         }
 
         // Burst transfer limits
-        // Just using the values the mfr uses here - not sure what the tradeoffs are
+        // Not sure what the tradeoffs are
         // Pretty sure this is only unsafe due to old-style conversion
         // to 5-bit integer; should be able to update upstream calc to be safe
         let rxburst = match self.rx_burst_size {
@@ -337,8 +361,7 @@ pub enum BurstSizeDMA {
 }
 
 /// "Descriptor" structure is the software interface with the direct memory access controller.
-/// Hardware interprets descriptors as members of a linked list, with the last word being a pointer
-/// to the next entry in the list.
+/// Hardware interprets descriptors as members of a linked list with a particular format.
 ///
 /// Use transparent representation so that it is stored as a contiguous array in memory instead
 /// of as a struct, which provides guaranteed memory layout without complicated machinery.
@@ -346,25 +369,19 @@ pub enum BurstSizeDMA {
 /// is still just a contiguous array of u8.
 ///
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
-#[repr(transparent)]
-struct Descriptor {
-    /// Descriptor data is volatile because it is cleared
-    /// by the DMA controller and must be checked by the EMAC driver.
-    data: Volatile<[u8; 4 * 8]>,
-}
+const _: i32 = 0;
 
-/// Circular singly-linked transmit buffer.
-struct TXDescriptorList<const N: usize> {
-    /// Contiguous array of descriptors
-    descriptors: Volatile<[Descriptor; N]>,
-    /// Current descriptor
-    i: usize,
-}
+// #[repr(transparent)]
+// struct Descriptor<'a> {
+//     /// Descriptor data is volatile because it is cleared
+//     /// by the DMA controller and must be checked by the EMAC driver.
+//     data: Volatile<&'a mut [u32; 8]>
+// }
 
-/// Circular singly-linked receive buffer.
-struct RXDescriptorList<const N: usize> {
-    /// Contiguous array of descriptors
-    descriptors: Volatile<[Descriptor; N]>,
-    /// Current descriptor
-    i: usize,
-}
+// impl Descriptor<'a> {
+//     pub fn new(data: &'a mut [u32; 8] ) -> Descriptor {
+//         Descriptor {
+//             data: Volatile::new(data),
+//         }
+//     }
+// }

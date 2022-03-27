@@ -1,6 +1,6 @@
 use volatile::Volatile;
 
-/// TX buffer descriptor field definitions
+/// TX buffer descriptor field definitions.
 ///
 /// "Descriptor" structure is the software interface with the direct memory access controller.
 /// Hardware interprets Descriptors as members of a linked list with a particular format.
@@ -12,6 +12,8 @@ use volatile::Volatile;
 /// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
 /// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
 /// values within the struct, hence the repr(C).
+/// 
+/// See datasheet Figure 23-3 for layout.
 #[derive(Clone, Copy)]
 #[repr(C, align(4))]
 // #[repr(transparent)]

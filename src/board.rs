@@ -255,32 +255,25 @@ impl Board {
         //     Get MAC address from read-only memory
         let macaddr = drivers::emac::get_rom_macaddr(&peripherals.FLASH_CTRL);
         //     Initialize EMAC driver
-        let mut emac: EMACDriver<{ Board::M }, { Board::N }, { Board::P }, { Board::Q }> =
-            EMACDriver {
-                emac: peripherals.EMAC0,
-                system_clk_freq: system_clk_freq,
-                src_macaddr: macaddr,
-                checksum_offload: true,
-                preamble_length: drivers::emac::PreambleLength::_7,
-                interframe_gap: drivers::emac::InterFrameGap::_96,
-                backoff_limit: drivers::emac::BackOffLimit::_1024,
-                rx_store_fwd: true,
-                tx_store_fwd: true,
-                rx_burst_size: drivers::emac::BurstSizeDMA::_4,
-                tx_burst_size: drivers::emac::BurstSizeDMA::_4,
-                rx_thresh: drivers::emac::RXThresholdDMA::_32,
-                tx_thresh: drivers::emac::TXThresholdDMA::_32,
-
-                tx_descriptors: [0_u32; 8 * Board::N],
-                tx_buffers: [0_u8; Board::M * Board::N],
-                rx_descriptors: [0_u32; 8 * Board::Q],
-                rx_buffers: [0_u8; Board::P * Board::Q],
-            };
-        emac.init(
-            &sysctl.power_control,
-            |pc| ephy_reset(pc),
-            |pc| emac_reset(pc),
-        );
+        let emac: EMACDriver<{ Board::M }, { Board::N }, { Board::P }, { Board::Q }> =
+            EMACDriver::new(
+                &sysctl.power_control,
+                |pc| ephy_reset(pc),
+                |pc| emac_reset(pc),
+                peripherals.EMAC0,
+                system_clk_freq,
+                macaddr,
+                true,
+                drivers::emac::PreambleLength::_7,
+                drivers::emac::InterFrameGap::_96,
+                drivers::emac::BackOffLimit::_1024,
+                true,
+                true,
+                drivers::emac::TXThresholdDMA::_32,
+                drivers::emac::RXThresholdDMA::_32,
+                drivers::emac::BurstSizeDMA::_4,
+                drivers::emac::BurstSizeDMA::_4,
+            );
 
         Board {
             core_peripherals,

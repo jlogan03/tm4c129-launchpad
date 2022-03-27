@@ -89,11 +89,62 @@ where
     /// Receive raw data
     pub async fn receive(data: &mut [u8]) {}
 
+    /// Build and initialize
+    pub(crate) fn new<F, G>(
+        pc: &PowerControl,
+        ephy_reset: F,
+        emac_reset: G,
+        emac: EMAC0,
+        system_clk_freq: PllOutputFrequency,
+        src_macaddr: [u8; 6],
+        checksum_offload: bool,
+        preamble_length: PreambleLength,
+        interframe_gap: InterFrameGap,
+        backoff_limit: BackOffLimit,
+        rx_store_fwd: bool,
+        tx_store_fwd: bool,
+        tx_thresh: TXThresholdDMA,
+        rx_thresh: RXThresholdDMA,
+        rx_burst_size: BurstSizeDMA,
+        tx_burst_size: BurstSizeDMA,
+    ) -> EMACDriver<M, N, P, Q>
+    where
+        F: Fn(&PowerControl) -> EphyR,
+        G: Fn(&PowerControl) -> EmacR,
+    {
+        let mut emacdriver: EMACDriver<M, N, P, Q> = EMACDriver {
+            emac: emac,
+            system_clk_freq: system_clk_freq,
+            src_macaddr: src_macaddr,
+            checksum_offload: checksum_offload,
+            preamble_length: preamble_length,
+            interframe_gap: interframe_gap,
+            backoff_limit: backoff_limit,
+            rx_store_fwd: rx_store_fwd,
+            tx_store_fwd: tx_store_fwd,
+            rx_burst_size: rx_burst_size,
+            tx_burst_size: tx_burst_size,
+            rx_thresh: rx_thresh,
+            tx_thresh: tx_thresh,
+
+            tx_descriptors: [0_u32; 8 * N],
+            tx_buffers: [0_u8; M * N],
+            rx_descriptors: [0_u32; 8 * Q],
+            rx_buffers: [0_u8; P * Q],
+        };
+        // Write registers and populate buffers
+        emacdriver.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
+
+        emacdriver
+    }
+
     /// 1. Reset to clear configuration
     ///
     /// 2. Set latching configuration & reset so that it takes effect
     ///
     /// 3. Apply non-latching configuration
+    /// 
+    /// 4. Populate buffers
     pub(crate) fn init<F, G>(&mut self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
     where
         F: Fn(&PowerControl) -> EphyR,
@@ -282,8 +333,8 @@ where
         //
         // Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
         //    Populate pointers
-        for i in 0..N-1 {
-            let i_desc = i * 8;  // Start of the current descriptor
+        for i in 0..N - 1 {
+            let i_desc = i * 8; // Start of the current descriptor
             let next_addr = (&self.tx_descriptors[i_desc + 8] as *const _) as u32;
             self.tx_descriptors[i_desc + 3] = next_addr;
         }

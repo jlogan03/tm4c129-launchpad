@@ -81,11 +81,11 @@ pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: u
 }
 
 impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<M, N, P, Q> {
-    /// Send raw ethernet frame that includes destination address, etc.
-    pub async fn transmit(data: &[u8]) {}
+    // Send raw ethernet frame that includes destination address, etc.
+    // pub async fn transmit(data: &[u8]) {}
 
-    /// Receive raw data
-    pub async fn receive(data: &mut [u8]) {}
+    // Receive raw data
+    // pub async fn receive(data: &mut [u8]) {}
 
     /// Build and initialize
     pub(crate) fn new<F, G>(

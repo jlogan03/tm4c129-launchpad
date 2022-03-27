@@ -69,6 +69,61 @@ impl RDES {
         (v | (RDES1::RBS1 as u32)) as u16
     }
 
+    /// Get an arbitrary field from RDES0
+    pub fn get_rdes0(&self, field: RDES0) -> u32 {
+        use RDES0::*;
+        let v = Volatile::new(&(self.v[0])).read(); // Volatile read of RDES0
+        let masked = v & (field as u32);
+        match field {
+            // Get the count of field length and align as u32
+            FL => masked >> 16,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1
+            }
+        } 
+    }
+
+    /// Get an arbitrary field from RDES1
+    pub fn get_rdes1(&self, field: RDES1) -> u32 {
+        use RDES1::*;
+        let v = Volatile::new(&(self.v[0])).read(); // Volatile read of RDES0
+        let masked = v & (field as u32);
+        match field {
+            // Get the second buffer content size and align as u32
+            RBS2 => masked >> 16,
+            // Get the first buffer content size and align as u32
+            RBS1 => masked,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1
+            }
+        } 
+    }
+
+    pub fn set_rdes1(&self, field: RDES1, value: Optional<u16>) {
+        use RDES1::*;
+        let mut v = Volatile::new(&mut (self.v[1])); // Volatile reference to RDES1
+        let mut x = match value {
+            Some(x) => x as u16,
+            _ => 0_u16
+        };
+        x = (x & 0b0000_1111_1111_1111) as u32;
+        match field {
+            RBS1 => {
+                vv.update(|val| *val &= !(RBS1 as u32)); // Clear field via read-modify-write
+                vv.update(|val| *val |= x); // Set new value
+            },
+            RBS2 => {
+                vv.update(|val| *val &= !(RBS2 as u32)); // Clear field via read-modify-write
+                vv.update(|val| *val |= x << 16); // Set new value
+            },
+            // Handle all flag fields
+            _ => v.update(|val| *val |= (field as u32))
+        }
+    }
 
 }
 

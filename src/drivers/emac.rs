@@ -29,11 +29,6 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
 pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: usize>
-where
-    [u32; 8 * N]:,
-    [u8; M * N]:,
-    [u32; 8 * Q]:,
-    [u8; P * Q]:,
 {
     // EMAC
     /// EMAC peripheral registers
@@ -67,21 +62,16 @@ where
 
     // RX/TX structures
     /// Volatile access to TX buffer descriptors
-    pub tx_descriptors: [u32; 8 * N],
+    pub tx_descriptors: [[u32; 8]; N],
     /// Volatile access to TX buffer data
-    pub tx_buffers: [u8; M * N],
+    pub tx_buffers: [[u8; M];  N],
     /// Volatile access to RX buffer descriptors
-    pub rx_descriptors: [u32; 8 * Q],
+    pub rx_descriptors: [[u32; 8]; Q],
     /// Volatile access to RX buffer data
-    pub rx_buffers: [u8; P * Q],
+    pub rx_buffers: [[u8; P]; Q],
 }
 
 impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<M, N, P, Q>
-where
-    [u32; 8 * N]:,
-    [u8; M * N]:,
-    [u32; 8 * Q]:,
-    [u8; P * Q]:,
 {
     /// Send raw ethernet frame that includes destination address, etc.
     pub async fn transmit(data: &[u8]) {}
@@ -127,10 +117,10 @@ where
             rx_thresh: rx_thresh,
             tx_thresh: tx_thresh,
 
-            tx_descriptors: [0_u32; 8 * N],
-            tx_buffers: [0_u8; M * N],
-            rx_descriptors: [0_u32; 8 * Q],
-            rx_buffers: [0_u8; P * Q],
+            tx_descriptors: [[0_u32; 8]; N],
+            tx_buffers: [[0_u8; M]; N],
+            rx_descriptors: [[0_u32; 8]; Q],
+            rx_buffers: [[0_u8; P]; Q],
         };
         // Write registers and populate buffers
         emacdriver.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
@@ -332,14 +322,14 @@ where
         // and information about how the content of the buffer should be interpreted
         //
         // Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
-        //    Populate pointers
+        //    Populate TX descriptor pointers
         for i in 0..N - 1 {
-            let i_desc = i * 8; // Start of the current descriptor
-            let next_addr = (&self.tx_descriptors[i_desc + 8] as *const _) as u32;
-            self.tx_descriptors[i_desc + 3] = next_addr;
+            let next_addr = (&self.tx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
+            self.tx_descriptors[i][3] = next_addr;
+            // let buffer_addr: u32 = (&self.tx_buffers[i * M] as *const _) as u32;  // Memory address of buffer segment
         }
 
-        // Volatile::new(&mut self.tx_descriptors[..]).index(8).read();
+        // Volatile::new(&mut self.tx_descriptors[0]).read();
     }
 }
 

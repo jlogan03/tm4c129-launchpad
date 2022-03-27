@@ -249,7 +249,8 @@ impl Board {
 
         // Ethernet
         // Note the portions that use the power_control lock introduce a panic branch if they are run from
-        // another module, so they must be run directly here or passed as a closure.
+        // another module, so they must be run directly here or passed as a closure until the compiler/linker
+        // get better at eliminating unreachable panic branches.
         //     Power-on and enable EMAC0 and EPHY0 peripherals
         emac_enable(&sysctl.power_control);
         //     Get MAC address from read-only memory

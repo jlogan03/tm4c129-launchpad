@@ -44,10 +44,13 @@ pub fn stellaris_main(mut board: board::Board) {
             writeln!(uart, "byte read {}", ch).unwrap_or_default();
             writeln!(
                 uart,
-                "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}, ",
+                "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
                 macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]
             )
             .unwrap_or_default();
+            // Debugging
+            writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();
+            writeln!(uart, "RX Descriptor 0 Word 2: {}", board.emac.rx_descriptors[0][2]).unwrap_or_default();
         }
         loops = loops + 1;
 

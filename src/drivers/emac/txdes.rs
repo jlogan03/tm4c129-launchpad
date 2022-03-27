@@ -10,11 +10,16 @@ use volatile::Volatile;
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
 #[derive(Clone, Copy)]
 #[repr(transparent)]
-pub(crate) struct TDES {
-    v: [u32; 8],
+pub struct TDES {
+    pub v: [u32; 8],
 }
 
 impl TDES {
+    /// New blank descriptor
+    pub fn new() -> TDES {
+        TDES {v: [0_u32; 8]}
+    }
+
     /// Check if software owns this descriptor, or the DMA
     pub fn is_owned(&self) -> bool {
         let vv = Volatile::new(&(self.v[0]));
@@ -37,16 +42,19 @@ impl TDES {
         ((vv.read() & TDES0::CC as u32) >> 3) as u8
     }
 
+    /// Get pointer to this TDES as u32
+    pub fn get_pointer(&self) -> u32 {
+        (self as *const _) as u32
+    }
+
     /// Set the pointer to the next descriptor in the ring
-    pub fn set_next_pointer(&mut self, nextdes: &TDES) {
-        let next_descr_addr: u32 = (nextdes as *const _) as u32; // Memory address of next descriptor
-        self.v[3] = next_descr_addr;
+    pub fn set_next_pointer(&mut self, ptr: u32) {
+        self.v[3] = ptr;
     }
 
     /// Set the pointer to the buffer segment associated with this
-    pub fn set_buffer_pointer<const M: usize>(&mut self, buffer: &[u8; M]) {
-        let buffer_addr: u32 = (buffer as *const _) as u32; // Memory address of buffer segment
-        self.v[2] = buffer_addr;
+    pub fn set_buffer_pointer(&mut self, ptr: u32) {
+        self.v[2] = ptr;
     }
 
     /// Set number of bytes to send from this buffer, in bytes, truncated to 12 bits.
@@ -76,7 +84,7 @@ impl TDES {
 
 /// TX descriptor field masks for the first word (TDES0)
 /// See datasheet Table 23-2
-pub(crate) enum TDES0 {
+pub enum TDES0 {
     // Status flag set by the DMA or the user to transfer ownership
     OWN = 1 << 31, // Flag that DMA owns this descriptor
     // To be set by the user
@@ -120,7 +128,7 @@ pub(crate) enum TDES0 {
 
 // TX descriptor field masks for second word (TDES1)
 // See datasheet table 23-3
-pub(crate) enum TDES1 {
+pub enum TDES1 {
     SA1 = 1 << 31,                 // Use MAC address register 1 instead of 0
     SaiInsert = 1 << 29,           // Insert source address into frame
     SaiReplace = 2 << 29,          // Replace existing source address in frame

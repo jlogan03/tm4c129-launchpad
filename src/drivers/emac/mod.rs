@@ -1,7 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
-mod txdes;  // TX descriptor ring definitions
-
+mod txdes; // TX descriptor ring definitions
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
@@ -34,8 +33,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
-pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: usize>
-{
+pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: usize> {
     // EMAC
     /// EMAC peripheral registers
     pub emac: EMAC0,
@@ -70,15 +68,14 @@ pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: u
     /// Volatile access to TX buffer descriptors
     pub tx_descriptors: [TDES; N],
     /// Volatile access to TX buffer data
-    pub tx_buffers: [[u8; M];  N],
+    pub tx_buffers: [[u8; M]; N],
     /// Volatile access to RX buffer descriptors
     pub rx_descriptors: [[u32; 8]; Q],
     /// Volatile access to RX buffer data
     pub rx_buffers: [[u8; P]; Q],
 }
 
-impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<M, N, P, Q>
-{
+impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<M, N, P, Q> {
     /// Send raw ethernet frame that includes destination address, etc.
     pub async fn transmit(data: &[u8]) {}
 
@@ -139,7 +136,7 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
     /// 2. Set latching configuration & reset so that it takes effect
     ///
     /// 3. Apply non-latching configuration
-    /// 
+    ///
     /// 4. Populate buffers
     pub(crate) fn init<F, G>(&mut self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
     where
@@ -323,46 +320,55 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
 
         // Set up ring buffers per datasheet section 23.3.2.5
 
-        //    Populate TX descriptors
-        //    Point the last descriptor back to the first and set its "end of ring" flag
-        let next_descr = (&self.tx_descriptors[0]).get_pointer();  // Pointer to first descriptor in the ring
-        let this_buffer = (&self.tx_buffers[N-1] as *const _) as u32;
-        let descr = &mut self.tx_descriptors[N-1];
-        descr.set_next_pointer(next_descr);  // Point last descriptor back at the first
-        descr.set_buffer_pointer(this_buffer);  // Populate last descriptor's buffer pointer
-        descr.set_tdes0(TDES0::TER);  // Set flag that this is the end of the ring
+        // Populate TX descriptors
         //    Populate the pointers in the other descriptors
-        for i in 0..N - 1 {
-            // Get the pointer to the next descriptor first to avoid borrow conflict
-            // let next_descr: u32 = (&self.tx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
-            let next_descr: u32 = (&self.tx_descriptors[i + 1]).get_pointer();
-            let this_buffer: u32 = (&self.tx_buffers[i] as *const _) as u32; // Memory address of buffer segment
+        for i in 0..N {
+            let next_descr: u32;
+            let this_buffer: u32;
+            if i < N - 1 {
+                // This is not the last descriptor in the ring
+                next_descr = (&self.tx_descriptors[i + 1]).get_pointer();
+                this_buffer = (&self.tx_buffers[i] as *const _) as u32; // Memory address of buffer segment
+            } else {
+                // This is the last descriptor in the ring
+                // Point the last descriptor back to the first and set its "end of ring" flag
+                next_descr = (&self.tx_descriptors[0]).get_pointer(); // Pointer to first descriptor in the ring
+                this_buffer = (&self.tx_buffers[N - 1] as *const _) as u32;
+            }
             // Get mutable ref to this descriptor second to avoid borrow conflict
             let descr = &mut self.tx_descriptors[i];
+
             // Set pointers
             descr.set_next_pointer(next_descr);
             descr.set_buffer_pointer(this_buffer);
-        }
-        //    Populate common configuration in all descriptors
-        for i in 0..N {
-            let descr = &mut self.tx_descriptors[i];
+
+            // Set end-of-ring flag for last descriptor
+            if i == N-1 {
+                descr.set_tdes0(TDES0::TER); // Set flag that this is the end of the ring
+            }
+
+            // Populate configuration common to all descriptors that should not be cleared by the 
+            descr.set_tdes0(TDES0::TCH);  // Second pointer is next descriptor
+            descr.set_tdes0(TDES0::CRCR);  // Enable ethernet checksum replacement
+            descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+            descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+            descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
         }
 
         //    Populate RX descriptor pointers
-        self.rx_descriptors[Q-1][3] = (&self.rx_descriptors[0] as *const _) as u32;  // Point last descriptor back at the first
-        self.rx_descriptors[Q-1][2] = (&self.rx_buffers[Q-1] as *const _) as u32;  // Populate last descriptor's buffer pointer
+        self.rx_descriptors[Q - 1][3] = (&self.rx_descriptors[0] as *const _) as u32; // Point last descriptor back at the first
+        self.rx_descriptors[Q - 1][2] = (&self.rx_buffers[Q - 1] as *const _) as u32; // Populate last descriptor's buffer pointer
         for i in 0..Q - 1 {
-            let next_descr_addr = (&self.rx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
+            let next_descr_addr = (&self.rx_descriptors[i + 1] as *const _) as u32; // Memory address of next descriptor
             self.rx_descriptors[i][3] = next_descr_addr;
-            let buffer_addr: u32 = (&self.rx_buffers[i] as *const _) as u32;  // Memory address of buffer segment
+            let buffer_addr: u32 = (&self.rx_buffers[i] as *const _) as u32; // Memory address of buffer segment
             self.rx_descriptors[i][2] = buffer_addr;
         }
-        
+
         // Placeholder volatile access for testing
         let mut dv = Volatile::new(&mut self.tx_descriptors[0]);
         let val = dv.read();
         dv.write(val);
-
     }
 }
 

@@ -33,6 +33,10 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
+/// 
+/// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
+/// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
+/// values within the struct, hence the repr(C).
 #[repr(C, align(4))]
 pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: usize> {
     // EMAC

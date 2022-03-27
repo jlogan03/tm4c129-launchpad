@@ -9,7 +9,9 @@ use volatile::Volatile;
 ///
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
 /// 
-/// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes
+/// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
+/// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
+/// values within the struct, hence the repr(C).
 #[derive(Clone, Copy)]
 #[repr(C, align(4))]
 // #[repr(transparent)]

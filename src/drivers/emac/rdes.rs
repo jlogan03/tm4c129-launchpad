@@ -164,8 +164,21 @@ pub enum RDES0 {
 /// See datasheet table 23-9
 #[repr(u32)]
 pub enum RDES1 {
+    /// Disable Interrupt on Completion
+    /// When set, this bit prevents the setting of the Receive Interrupt (RI) bit in the EMACDMARIS register and
+    /// prevents the receive interrupt from being asserted.
+    DI = 1 << 31,
     /// Size of valid data in second buffer
     RBS2 = 0b1111_1111_1111 << 16,
+    /// RER: Receive End of Ring
+    /// When set, this bit indicates that the descriptor list reached its final descriptor. The DMA returns to the base
+    /// address of the list, creating a Descriptor Ring.
+    RER = 1 << 15,
+    /// RCH: Second Address Chained
+    /// When set, this bit indicates that the second address in the descriptor is the Next Descriptor address rather
+    /// than the second buffer address. When this bit is set, RBS2 (RDES1[28:16]) is a "don’t care" value. RDES1[15]
+    /// takes precedence over RDES1[14].
+    RCH = 1 << 14,
     /// Size of valid data in first buffer
     RBS1 = 0b1111_1111_1111,
 }

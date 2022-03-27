@@ -8,8 +8,11 @@ use volatile::Volatile;
 /// and information about how the content of the buffer should be interpreted
 ///
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
+/// 
+/// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes
 #[derive(Clone, Copy)]
-#[repr(transparent)]
+#[repr(C, align(4))]
+// #[repr(transparent)]
 pub struct TDES {
     pub v: [u32; 8],
 }
@@ -63,7 +66,7 @@ impl TDES {
         let mut vv = Volatile::new(&mut (self.v[1])); // Volatile representation of TDES1
         vv.update(|val| *val &= !(TDES1::TBS1 as u32)); // Clear field via read-modify-write
 
-        let m = (n & 0b0000_1111_1111_1111) as u32; // Truncate to 12 bits
+        let m = (n & 0b0000_1111_1111_1111) as u32; // Truncate to 12 bits and expand to u32
         vv.update(|val| *val |= m); // Set new value via read-modify-write
     }
 
@@ -84,6 +87,7 @@ impl TDES {
 
 /// TX descriptor field masks for the first word (TDES0)
 /// See datasheet Table 23-2
+#[repr(u32)]
 pub enum TDES0 {
     // Status flag set by the DMA or the user to transfer ownership
     /// Flag that DMA owns this descriptor
@@ -156,8 +160,9 @@ pub enum TDES0 {
     DB = 1,
 }
 
-// TX descriptor field masks for second word (TDES1)
-// See datasheet table 23-3
+/// TX descriptor field masks for second word (TDES1)
+/// See datasheet table 23-3
+#[repr(u32)]
 pub enum TDES1 {
     /// Use MAC address register 1 instead of 0
     SA1 = 1 << 31,

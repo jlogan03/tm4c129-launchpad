@@ -33,6 +33,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
+#[repr(C, align(4))]
 pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: usize> {
     // EMAC
     /// EMAC peripheral registers
@@ -320,6 +321,10 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
 
         // Set up ring buffers per datasheet section 23.3.2.5
 
+        // Stop the DMA to allow setting pointers
+        self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
+        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
+
         // Point the DMA to the start of the descriptor lists
         let txdladdr: u32 = (&self.tx_descriptors[0]).get_pointer();
         let rxdladdr: u32 = ((&self.rx_descriptors[0]) as *const _) as u32;
@@ -327,7 +332,6 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
         self.emac.rxdladdr.write(|w| unsafe{w.bits(rxdladdr)});
         
         // Populate TX descriptors
-        //    Populate the pointers in the other descriptors
         for i in 0..N {
             let next_descr: u32;
             let this_buffer: u32;
@@ -361,7 +365,7 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
             descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
         }
 
-        // Populate RX descriptor pointers
+        // Populate RX descriptors
         self.rx_descriptors[Q - 1][3] = (&self.rx_descriptors[0] as *const _) as u32; // Point last descriptor back at the first
         self.rx_descriptors[Q - 1][2] = (&self.rx_buffers[Q - 1] as *const _) as u32; // Populate last descriptor's buffer pointer
         for i in 0..Q - 1 {
@@ -370,6 +374,10 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
             let buffer_addr: u32 = (&self.rx_buffers[i] as *const _) as u32; // Memory address of buffer segment
             self.rx_descriptors[i][2] = buffer_addr;
         }
+
+        // Start the DMA to lock-in new buffer configuration
+        self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
+        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
 
         // Placeholder volatile access for testing
         let mut dv = Volatile::new(&mut self.tx_descriptors[0]);

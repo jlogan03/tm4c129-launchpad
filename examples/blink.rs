@@ -41,6 +41,7 @@ pub fn stellaris_main(mut board: board::Board) {
         // Spam serial
         writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
         while let Ok(ch) = uart.read() {
+            // Echo
             writeln!(uart, "byte read {}", ch).unwrap_or_default();
 
             // Show MAC address
@@ -55,6 +56,7 @@ pub fn stellaris_main(mut board: board::Board) {
             writeln!(uart, "TX Descriptor 0 Word 0: {}", board.emac.tx_descriptors[0].v[0]).unwrap_or_default();
             writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();
+            writeln!(uart, "TX Descriptor 0 Word 3: {}", board.emac.tx_descriptors[0].v[3]).unwrap_or_default();
             writeln!(uart, "RX Descriptor 0 Word 2: {}", board.emac.rx_descriptors[0][2]).unwrap_or_default();
         }
         loops = loops + 1;

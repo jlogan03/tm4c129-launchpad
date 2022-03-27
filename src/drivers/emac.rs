@@ -322,14 +322,26 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
         // and information about how the content of the buffer should be interpreted
         //
         // Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
+
         //    Populate TX descriptor pointers
+        self.tx_descriptors[N-1][3] = (&self.tx_descriptors[0] as *const _) as u32;  // Point last descriptor back at the first
+        self.tx_descriptors[N-1][2] = (&self.tx_buffers[N-1] as *const _) as u32;  // Populate last descriptor's buffer pointer
         for i in 0..N - 1 {
-            let next_addr = (&self.tx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
-            self.tx_descriptors[i][3] = next_addr;
+            let next_descr_addr = (&self.tx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
+            self.tx_descriptors[i][3] = next_descr_addr;
             let buffer_addr: u32 = (&self.tx_buffers[i] as *const _) as u32;  // Memory address of buffer segment
             self.tx_descriptors[i][2] = buffer_addr;
         }
-
+        //    Populate RX descriptor pointers
+        self.rx_descriptors[Q-1][3] = (&self.rx_descriptors[0] as *const _) as u32;  // Point last descriptor back at the first
+        self.rx_descriptors[Q-1][2] = (&self.rx_buffers[Q-1] as *const _) as u32;  // Populate last descriptor's buffer pointer
+        for i in 0..Q - 1 {
+            let next_descr_addr = (&self.rx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
+            self.rx_descriptors[i][3] = next_descr_addr;
+            let buffer_addr: u32 = (&self.rx_buffers[i] as *const _) as u32;  // Memory address of buffer segment
+            self.rx_descriptors[i][2] = buffer_addr;
+        }
+        
         // Placeholder volatile access to make sure the buffers do not get optimized out
         let mut dv = Volatile::new(&mut self.tx_descriptors[0]);
         let val = dv.read();

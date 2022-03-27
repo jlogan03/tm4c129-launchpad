@@ -33,7 +33,7 @@ pub fn stellaris_main(mut board: board::Board) {
     );
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
-    let macaddr: [u8; 6] = emac::get_rom_macaddr(&board.FLASH_CTRL);
+    let macaddr: [u8; 6] = board.emac.src_macaddr;
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;
@@ -42,13 +42,18 @@ pub fn stellaris_main(mut board: board::Board) {
         writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
         while let Ok(ch) = uart.read() {
             writeln!(uart, "byte read {}", ch).unwrap_or_default();
+
+            // Show MAC address
             writeln!(
                 uart,
                 "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
                 macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]
             )
             .unwrap_or_default();
+
             // Debugging
+            writeln!(uart, "TX Descriptor 0 Word 0: {}", board.emac.tx_descriptors[0].v[0]).unwrap_or_default();
+            writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();
             writeln!(uart, "RX Descriptor 0 Word 2: {}", board.emac.rx_descriptors[0][2]).unwrap_or_default();
         }

@@ -342,7 +342,7 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
             self.rx_descriptors[i][2] = buffer_addr;
         }
         
-        // Placeholder volatile access to make sure the buffers do not get optimized out
+        // Placeholder volatile access for testing
         let mut dv = Volatile::new(&mut self.tx_descriptors[0]);
         let val = dv.read();
         dv.write(val);
@@ -432,4 +432,57 @@ pub enum BurstSizeDMA {
     // _64,
     // _128,
     // _256,
+}
+
+/// TX descriptor fields for the first word (TDES0)
+/// See datasheet Table 23-2
+pub(crate) enum TXDescriptor0 {
+    // Status flag set by the DMA or the user to transfer ownership
+    OWN = 1 << 31,  // Flag that DMA owns this descriptor
+    // To be set by the user
+    TI = 1 << 30,  // Interrupt at end of transmission
+    LS = 1 << 29,  // Last segment of the frame
+    FS = 1 << 28,  // First segment of the frame
+    DC = 1 << 27,  // Disable CRC check
+    DP = 1 << 26,  // Disable zero-padding
+    TTSE = 1 << 25,  // Transmit Timestamp Enable (for IEEE-1588 PTP timestamping)
+    CRCR = 1 << 24,  // Enable Ethernet checksum replacement
+    // CicDisable = 0, // Do not insert IPV4 or UDP/TCP checksums
+    CicIPV4 = 1 << 22, // Insert IPV4 checksum only
+    CicFrameOnly = 2 << 22, // Insert IPV4 checksum & TCP/UDP checksum without pseudoheader
+    CicFull = 3 << 22, // Insert IPV4 checksum & TCP/UDP checksum including pseudoheader (per the actual standard)
+    TER = 1 << 21, // Transmit End of Ring: this descriptor is the last one in the ring
+    TCH = 1 << 20, // Transmit Chain: the second pointer field is a pointer to the next descriptor, not a buffer
+    // VlanDisable = 0, // No VLAN tagging
+    VlanRemove = 1 << 18, // Strip VLAN tag before transmission
+    VlanInsert = 2 << 18, // Insert VLAN tag into frame (copied from register EMACVLNINCREP)
+    VlanReplace = 3 << 18, // Replace existing VLAN tag in frame (copied from register EMACVLNINCREP)
+
+    // Status flags set by the DMA
+    TTSS = 1 << 17, // Timestamp was captured for this frame
+    IHE = 1 << 16, // IP header error occurred
+    ES = 1 << 15, // An error of any kind occurred
+    JT = 1 << 14, // Jabber timeout error
+    FF = 1 << 13, // Frame flushed by software
+    IPE = 1 << 12, // IP payload error
+    LOC = 1 << 11, // Loss of Carrier error
+    NC = 1 << 10, // No Carrier error
+    LC = 1 << 9, // Late Collision error
+    EC = 1 << 8, // Excessive Collision error
+
+    VF = 1 << 7, // Transmitted frame was a VLAN frame
+    CC = 0b111 << 3, // Collision count
+    
+    ED = 1 << 2, // Excessive Deferral error
+    UF = 1 << 1, // Underflow error
+    DB = 1, // Deferral bit (only relevant to half-duplex mode)
+}
+
+// TX descriptor fields for second word (TDES1)
+// See datasheet table 23-3
+pub(crate) enum TXDescriptor1 {
+    SA1 = 1 << 31,
+    SaiInsert = 1 << 29,
+    SaiReplace = 2 << 29,
+
 }

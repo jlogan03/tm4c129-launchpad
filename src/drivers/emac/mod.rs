@@ -1,6 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
-mod txdes; // TX descriptor ring definitions
+mod tdes; // TX descriptor ring definitions
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
@@ -9,7 +9,7 @@ use tm4c129x_hal::{
 
 use volatile::Volatile;
 
-use self::txdes::*;
+use self::tdes::*;
 
 /// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EmacR;

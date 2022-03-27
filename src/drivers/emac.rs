@@ -6,10 +6,10 @@ use tm4c129x_hal::{
 
 use volatile::Volatile;
 
-/// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init have the correct effects
+/// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EmacR;
 
-/// Empty type to guarantee that the ephy_reset closure passed to EMACDriver::init have the correct effects
+/// Empty type to guarantee that the ephy_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EphyR;
 
 /// Get preprogrammed MAC address from ROM
@@ -28,7 +28,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
-pub struct EMACDriver<'a, const M: usize, const N: usize, const P: usize, const Q: usize>
+pub struct EMACDriver<const M: usize, const N: usize, const P: usize, const Q: usize>
 where
     [u32; 8 * N]:,
     [u8; M * N]:,
@@ -67,16 +67,16 @@ where
 
     // RX/TX structures
     /// Volatile access to TX buffer descriptors
-    pub tx_descriptors: Volatile<&'a mut [u32; 8 * N]>,
+    pub tx_descriptors: [u32; 8 * N],
     /// Volatile access to TX buffer data
-    pub tx_buffers: Volatile<&'a mut [u8; M * N]>,
+    pub tx_buffers: [u8; M * N],
     /// Volatile access to RX buffer descriptors
-    pub rx_descriptors: Volatile<&'a mut [u32; 8 * Q]>,
+    pub rx_descriptors: [u32; 8 * Q],
     /// Volatile access to RX buffer data
-    pub rx_buffers: Volatile<&'a mut [u8; P * Q]>,
+    pub rx_buffers: [u8; P * Q],
 }
 
-impl<'a, const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<'a, M, N, P, Q>
+impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<M, N, P, Q>
 where
     [u32; 8 * N]:,
     [u8; M * N]:,
@@ -94,7 +94,7 @@ where
     /// 2. Set latching configuration & reset so that it takes effect
     ///
     /// 3. Apply non-latching configuration
-    pub(crate) fn init<F, G>(&self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
+    pub(crate) fn init<F, G>(&mut self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
     where
         F: Fn(&PowerControl) -> EphyR,
         G: Fn(&PowerControl) -> EmacR,
@@ -273,6 +273,22 @@ where
             RXThresholdDMA::_96 => self.emac.dmaopmode.modify(|_, w| w.rtc()._96()),
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
+
+        // Set up buffers per datasheet section 23.3.2.5
+        // "Descriptor" structure is the software interface with the direct memory access controller.
+        // Hardware interprets Descriptors as members of a linked list with a particular format.
+        // Each Descriptor contains a pointer to its buffer segment, a pointer to the next descriptor,
+        // and information about how the content of the buffer should be interpreted
+        //
+        // Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
+        //    Populate pointers
+        for i in 0..N-1 {
+            let i_desc = i * 8;  // Start of the current descriptor
+            let next_addr = (&self.tx_descriptors[i_desc + 8] as *const _) as u32;
+            self.tx_descriptors[i_desc + 3] = next_addr;
+        }
+
+        // Volatile::new(&mut self.tx_descriptors[..]).index(8).read();
     }
 }
 
@@ -359,29 +375,3 @@ pub enum BurstSizeDMA {
     // _128,
     // _256,
 }
-
-/// "Descriptor" structure is the software interface with the direct memory access controller.
-/// Hardware interprets descriptors as members of a linked list with a particular format.
-///
-/// Use transparent representation so that it is stored as a contiguous array in memory instead
-/// of as a struct, which provides guaranteed memory layout without complicated machinery.
-/// Volatile<T> also uses transparent representation matching T, so the accumulated representation
-/// is still just a contiguous array of u8.
-///
-/// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
-const _: i32 = 0;
-
-// #[repr(transparent)]
-// struct Descriptor<'a> {
-//     /// Descriptor data is volatile because it is cleared
-//     /// by the DMA controller and must be checked by the EMAC driver.
-//     data: Volatile<&'a mut [u32; 8]>
-// }
-
-// impl Descriptor<'a> {
-//     pub fn new(data: &'a mut [u32; 8] ) -> Descriptor {
-//         Descriptor {
-//             data: Volatile::new(data),
-//         }
-//     }
-// }

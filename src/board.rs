@@ -6,10 +6,9 @@ use tm4c129x_hal::sysctl::{
     PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
 };
 use tm4c129x_hal::time::Hertz;
-use volatile::Volatile;
 
 use crate::drivers;
-use crate::drivers::emac::{EMACDriver, EphyR, EmacR};
+use crate::drivers::emac::{EMACDriver, EmacR, EphyR};
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -19,19 +18,6 @@ pub enum Button {
     /// SW2
     Two,
 }
-
-// Ethernet buffers must be static
-//     Constants describing ethernet buffer sizes
-const M: usize = 10;  // Ethernet TX buffer segment length in bytes
-const N: usize = 12;  // Ethernet TX number of buffer segments 
-const P: usize = 10;  // Ethernet RX buffer segment length in bytes
-const Q: usize = 12;  // Ethernet RX number of buffer segments 
-//     Ethernet buffer data
-static mut TX_DESCRIPTOR_DATA: [u32; 8 * N] = [0_u32; 8 * N];
-static mut TX_BUFFER_DATA: [u8; M * N] = [0_u8; M * N];
-static mut RX_DESCRIPTOR_DATA: [u32; 8 * N] = [0_u32; 8 * Q];
-static mut RX_BUFFER_DATA: [u8; M * N] = [0_u8; P * Q];
-
 
 /// Hardware definitions for the TM4C129-XL Launchpad board
 #[allow(non_snake_case)]
@@ -63,7 +49,7 @@ pub struct Board {
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub emac: EMACDriver<'static, M, N, P, Q>, 
+    pub emac: EMACDriver<{ Board::M }, { Board::N }, { Board::P }, { Board::Q }>,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -212,6 +198,10 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
+    const M: usize = 1024; // Ethernet TX buffer segment length in bytes
+    const N: usize = 10; // Ethernet TX number of buffer segments
+    const P: usize = 1024; // Ethernet RX buffer segment length in bytes
+    const Q: usize = 12; // Ethernet RX number of buffer segments
 
     // Initialize peripherals
     pub(crate) fn new() -> Board {
@@ -259,45 +249,33 @@ impl Board {
 
         // Ethernet
         // Note the portions that use the power_control lock introduce a panic branch if they are run from
-        // another module, so they must be run directly here.
-        //   Power on, enable, and reset
-        control_power(
-            &sysctl.power_control,
-            Domain::Emac0,
-            RunMode::Run,
-            PowerState::On,
-        );
-        emac_reset(&sysctl.power_control);
-        control_power(
-            &sysctl.power_control,
-            Domain::Ephy0,
-            RunMode::Run,
-            PowerState::On,
-        );
-        ephy_reset(&sysctl.power_control);
-
-        // Initialize EMAC driver
+        // another module, so they must be run directly here or passed as a closure.
+        //     Power-on and enable EMAC0 and EPHY0 peripherals
+        emac_enable(&sysctl.power_control);
+        //     Get MAC address from read-only memory
         let macaddr = drivers::emac::get_rom_macaddr(&peripherals.FLASH_CTRL);
-        let emac = EMACDriver {
-            emac: peripherals.EMAC0,
-            system_clk_freq: system_clk_freq,
-            src_macaddr: macaddr,
-            checksum_offload: true,
-            preamble_length: drivers::emac::PreambleLength::_7,
-            interframe_gap: drivers::emac::InterFrameGap::_96,
-            backoff_limit: drivers::emac::BackOffLimit::_1024,
-            rx_store_fwd: true,
-            tx_store_fwd: true,
-            rx_burst_size: drivers::emac::BurstSizeDMA::_4,
-            tx_burst_size: drivers::emac::BurstSizeDMA::_4,
-            rx_thresh: drivers::emac::RXThresholdDMA::_32,
-            tx_thresh: drivers::emac::TXThresholdDMA::_32,
+        //     Initialize EMAC driver
+        let mut emac: EMACDriver<{ Board::M }, { Board::N }, { Board::P }, { Board::Q }> =
+            EMACDriver {
+                emac: peripherals.EMAC0,
+                system_clk_freq: system_clk_freq,
+                src_macaddr: macaddr,
+                checksum_offload: true,
+                preamble_length: drivers::emac::PreambleLength::_7,
+                interframe_gap: drivers::emac::InterFrameGap::_96,
+                backoff_limit: drivers::emac::BackOffLimit::_1024,
+                rx_store_fwd: true,
+                tx_store_fwd: true,
+                rx_burst_size: drivers::emac::BurstSizeDMA::_4,
+                tx_burst_size: drivers::emac::BurstSizeDMA::_4,
+                rx_thresh: drivers::emac::RXThresholdDMA::_32,
+                tx_thresh: drivers::emac::TXThresholdDMA::_32,
 
-            tx_descriptors: unsafe{Volatile::new(&mut TX_DESCRIPTOR_DATA)},
-            tx_buffers: unsafe{Volatile::new(&mut TX_BUFFER_DATA)},
-            rx_descriptors: unsafe{Volatile::new(&mut RX_DESCRIPTOR_DATA)},
-            rx_buffers: unsafe{Volatile::new(&mut RX_BUFFER_DATA)},
-        };
+                tx_descriptors: [0_u32; 8 * Board::N],
+                tx_buffers: [0_u8; Board::M * Board::N],
+                rx_descriptors: [0_u32; 8 * Board::Q],
+                rx_buffers: [0_u8; Board::P * Board::Q],
+            };
         emac.init(
             &sysctl.power_control,
             |pc| ephy_reset(pc),
@@ -424,8 +402,8 @@ fn emac_reset(power_control: &PowerControl) -> EmacR {
     reset(power_control, Domain::Emac0);
     loop {
         if p.premac.read().r0().bit_is_set() {
-            let emacr: EmacR = EmacR{};
-            return emacr
+            let emacr: EmacR = EmacR {};
+            return emacr;
         }
     }
 }
@@ -438,8 +416,16 @@ fn ephy_reset(power_control: &PowerControl) -> EphyR {
     reset(power_control, Domain::Ephy0);
     loop {
         if p.prephy.read().r0().bit_is_set() {
-            let ephyr: EphyR = EphyR{};
-            return ephyr
+            let ephyr: EphyR = EphyR {};
+            return ephyr;
         }
     }
+}
+
+/// Power-on and reset EMAC then EPHY
+fn emac_enable(power_control: &PowerControl) {
+    control_power(power_control, Domain::Emac0, RunMode::Run, PowerState::On);
+    emac_reset(power_control);
+    control_power(power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
+    ephy_reset(power_control);
 }

@@ -326,10 +326,15 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
         for i in 0..N - 1 {
             let next_addr = (&self.tx_descriptors[i + 1] as *const _) as u32;  // Memory address of next descriptor
             self.tx_descriptors[i][3] = next_addr;
-            // let buffer_addr: u32 = (&self.tx_buffers[i * M] as *const _) as u32;  // Memory address of buffer segment
+            let buffer_addr: u32 = (&self.tx_buffers[i] as *const _) as u32;  // Memory address of buffer segment
+            self.tx_descriptors[i][2] = buffer_addr;
         }
 
-        // Volatile::new(&mut self.tx_descriptors[0]).read();
+        // Placeholder volatile access to make sure the buffers do not get optimized out
+        let mut dv = Volatile::new(&mut self.tx_descriptors[0]);
+        let val = dv.read();
+        dv.write(val);
+
     }
 }
 

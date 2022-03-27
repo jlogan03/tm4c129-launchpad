@@ -25,6 +25,12 @@ impl TDES {
         }
     }
 
+    /// Give ownership of this descriptor to the DMA by setting the OWN bit
+    pub fn give(&mut self) {
+        let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of TDES0
+        vv.update(|val| *val |= TDES0::OWN as u32);  // Set the OWN bit
+    }
+
     /// Get collision count encountered during send
     pub fn get_cc(&self) -> u8 {
         let vv = Volatile::new(&(self.v[0]));
@@ -43,6 +49,16 @@ impl TDES {
         self.v[2] = buffer_addr;
     }
 
+    /// Set number of bytes to send from this buffer, in bytes, truncated to 12 bits.
+    /// Clears existing value.
+    pub fn set_buffer_size(&mut self, n: u16) {
+        let mut vv = Volatile::new(&mut (self.v[1])); // Volatile representation of TDES1
+        vv.update(|val| *val &= !(TDES1::TBS1 as u32)); // Clear field via read-modify-write
+
+        let m = (n & 0b0000_1111_1111_1111) as u32; // Truncate to 12 bits
+        vv.update(|val| *val |= m); // Set new value via read-modify-write
+    }
+
     /// Set a flag field in TDES0 by OR-ing in the new value via volatile read-modify-write.
     /// Does not check if an overlapping value is already set!
     pub fn set_tdes0(&mut self, field: TDES0) {
@@ -53,7 +69,7 @@ impl TDES {
     /// Set a flag field in TDES1 by OR-ing in the new value via volatile read-modify-write.
     /// Does not check if an overlapping value is already set!
     pub fn set_tdes1(&mut self, field: TDES1) {
-        let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of TDES0
+        let mut vv = Volatile::new(&mut (self.v[1])); // Volatile representation of TDES1
         vv.update(|val| *val |= field as u32); // Volatile read-modify-write
     }
 }

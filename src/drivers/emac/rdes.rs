@@ -42,12 +42,6 @@ impl RDES {
         vv.update(|val| *val |= RDES0::OWN as u32); // Set the OWN bit
     }
 
-    /// Get collision count encountered during send
-    pub fn get_cc(&self) -> u8 {
-        let vv = Volatile::new(&(self.v[0]));
-        ((vv.read() & RDES0::CC as u32) >> 3) as u8
-    }
-
     /// Get pointer to this RDES as u32
     pub fn get_pointer(&self) -> u32 {
         (self as *const _) as u32
@@ -91,9 +85,8 @@ impl RDES {
         let v = Volatile::new(&(self.v[0])).read(); // Volatile read of RDES0
         let masked = v & (field as u32);
         match field {
-            // Get the second buffer content size and align as u32
+            // Handle numeric values
             RBS2 => masked >> 16,
-            // Get the first buffer content size and align as u32
             RBS1 => masked,
             // Handle all flag fields as integer representation of bool
             _ => match masked {
@@ -103,6 +96,7 @@ impl RDES {
         } 
     }
 
+    /// Set an arbitrary field in RDES1
     pub fn set_rdes1(&self, field: RDES1, value: Optional<u16>) {
         use RDES1::*;
         let mut v = Volatile::new(&mut (self.v[1])); // Volatile reference to RDES1
@@ -112,6 +106,7 @@ impl RDES {
         };
         x = (x & 0b0000_1111_1111_1111) as u32;
         match field {
+            // Handle numeric values
             RBS1 => {
                 vv.update(|val| *val &= !(RBS1 as u32)); // Clear field via read-modify-write
                 vv.update(|val| *val |= x); // Set new value

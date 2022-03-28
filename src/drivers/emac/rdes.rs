@@ -58,7 +58,7 @@ impl RDES {
     }
 
     /// Get number of bytes to receive from this buffer, in bytes.
-    pub fn get_buffer_size(&self, n: u16) -> u16 {
+    pub fn get_buffer_size(&self) -> u16 {
         let v = Volatile::new(&(self.v[1])).read(); // Volatile read of RDES1
         (v | (RDES1::RBS1 as u32)) as u16
     }
@@ -97,26 +97,26 @@ impl RDES {
     }
 
     /// Set an arbitrary field in RDES1
-    pub fn set_rdes1(&self, field: RDES1, value: Optional<u16>) {
+    pub fn set_rdes1(&mut self, field: RDES1, value: Option<u16>) {
         use RDES1::*;
         let mut v = Volatile::new(&mut (self.v[1])); // Volatile reference to RDES1
-        let mut x = match value {
-            Some(x) => x as u16,
-            _ => 0_u16
+        let x: u16 = match value {
+            Some(x) => x,
+            None => 0_u16
         };
-        x = (x & 0b0000_1111_1111_1111) as u32;
+        let masked = (x & (0b0000_1111_1111_1111 as u16)) as u32;
         match field {
             // Handle numeric values
             RBS1 => {
-                vv.update(|val| *val &= !(RBS1 as u32)); // Clear field via read-modify-write
-                vv.update(|val| *val |= x); // Set new value
+                v.update(|val| *val &= !(RBS1 as u32)); // Clear field via read-modify-write
+                v.update(|val| *val |= masked); // Set new value
             },
             RBS2 => {
-                vv.update(|val| *val &= !(RBS2 as u32)); // Clear field via read-modify-write
-                vv.update(|val| *val |= x << 16); // Set new value
+                v.update(|val| *val &= !(RBS2 as u32)); // Clear field via read-modify-write
+                v.update(|val| *val |= masked << 16); // Set new value
             },
             // Handle all flag fields
-            _ => v.update(|val| *val |= (field as u32))
+            _ => v.update(|val| *val |= field as u32)
         }
     }
 
@@ -124,6 +124,7 @@ impl RDES {
 
 /// TX descriptor field masks for the first word (RDES0)
 /// See datasheet Table 23-8
+#[derive(Clone, Copy)]
 #[repr(u32)]
 pub enum RDES0 {
     /// Status flag set by the DMA or software to transfer ownership
@@ -199,7 +200,7 @@ pub enum RDES0 {
     RE = 1 << 3,
     /// DE: Dribble Bit Error
     /// When set, this bit indicates that the received frame has a non-integer multiple of bytes (odd nibbles).
-    DE = 1 << 2,
+    DBE = 1 << 2,
     /// CE: CRC Error
     /// When set, this bit indicates that a Cyclic Redundancy Check (CRC) Error occurred on the received frame. This
     /// field is valid only when the Last Descriptor bit (RDES0[8]) is set.
@@ -212,6 +213,7 @@ pub enum RDES0 {
 
 /// TX descriptor field masks for second word (RDES1)
 /// See datasheet table 23-9
+#[derive(Clone, Copy)]
 #[repr(u32)]
 pub enum RDES1 {
     /// Disable Interrupt on Completion

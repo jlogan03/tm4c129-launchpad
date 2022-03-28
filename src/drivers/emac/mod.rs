@@ -328,14 +328,18 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
         // Set up ring buffers per datasheet section 23.3.2.5
 
         // Stop the DMA to allow setting pointers
-        self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
-        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
+        // self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
+        // self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
 
         // Point the DMA to the start of the descriptor lists
-        let txdladdr: u32 = (&self.tx_descriptors[0]).get_pointer();
-        let rxdladdr: u32 = ((&self.rx_descriptors[0]) as *const _) as u32;
-        self.emac.txdladdr.write(|w| unsafe{w.bits(txdladdr)});
-        self.emac.rxdladdr.write(|w| unsafe{w.bits(rxdladdr)});
+        // let txdladdr: u32 = (&self.tx_descriptors[0]).get_pointer();
+        // let rxdladdr: u32 = ((&self.rx_descriptors[0]) as *const _) as u32;
+        // self.emac.txdladdr.write(|w| unsafe{w.bits(txdladdr)});
+        // self.emac.rxdladdr.write(|w| unsafe{w.bits(rxdladdr)});
+
+        // Get raw pointers to the first descriptors in each ring
+        let txdladdr: *const TDES = self.emac.txdladdr.read().bits() as *const TDES;
+        let rxdladdr: *const RDES = self.emac.rxdladdr.read().bits() as *const RDES;
         
         // Populate TX descriptors
         for i in 0..N {
@@ -399,7 +403,7 @@ impl<const M: usize, const N: usize, const P: usize, const Q: usize> EMACDriver<
             }
         }
 
-        // Start the DMA to lock-in new buffer configuration
+        // Start the DMA
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
 

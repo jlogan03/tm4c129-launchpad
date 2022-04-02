@@ -26,13 +26,14 @@ impl TXDL {
 
     /// Move the address of the current descriptor to the next one in the chain
     /// or loop back to the start if this is the last one
-    pub unsafe fn next(&mut self){
+    pub unsafe fn next(&mut self) -> &mut TXDL {
         let tdes: TDES = *self.tdesref;
         if tdes.get_tdes0(TDES0::TCH) != 0 {  // We are chaining to the next descriptor in the list
             self.tdesref = (*self.tdesref).get_next_pointer() as *mut TDES;
         } else {  // We are looping back to the start of the list
             self.tdesref = self.txdladdr;
         }
+        self
     }
 
     /// Dereference the current descriptor

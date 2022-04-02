@@ -324,55 +324,15 @@ impl EMACDriver {
 
         // Set up ring buffers per datasheet section 23.3.2.5
 
-        // Stop the DMA to configure it
-        // self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
-        // self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
-
         // Populate the first TX descriptor
         let mut descr: TDES;
-        unsafe{descr = self.txdl.get();}
+        unsafe {
+            descr = self.txdl.get();
+        }
         descr.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
         descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
         descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
         descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
-
-
-        // Populate RX descriptors
-        //     for i in 0..Q {
-        //         // Get descriptor pointer
-        //         let next_descr: u32;
-        //         if i < Q - 1 {
-        //             // This is not the last descriptor in the ring
-        //             next_descr = (&self.rx_descriptors[i + 1]).get_pointer();
-        //         } else {
-        //             // This is the last descriptor in the ring
-        //             // Point the last descriptor back to the first and set its "end of ring" flag
-        //             next_descr = (&self.rx_descriptors[0]).get_pointer(); // Pointer to first descriptor in the ring
-        //         }
-        //         // Get buffer pointer
-        //         let this_buffer: u32 = (&self.rx_buffers[i] as *const _) as u32; // Memory address of buffer segment;
-
-        //         // Get mutable ref to this descriptor second to avoid borrow conflict
-        //         let descr = &mut self.rx_descriptors[i];
-
-        //         // Set pointers
-        //         descr.set_next_pointer(next_descr);
-        //         descr.set_buffer_pointer(this_buffer);
-
-        //         // Set end-of-ring flag for last descriptor
-        //         if i == Q-1 {
-        //             descr.set_rdes1(RDES1::RER, None); // Set flag that this is the end of the ring
-        //         }
-        //     }
-
-        //     // Start the DMA
-        //     self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
-        //     self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
-
-        //     // Placeholder volatile access for testing
-        //     let mut dv = Volatile::new(&mut self.tx_descriptors[0]);
-        //     let val = dv.read();
-        //     dv.write(val);
     }
 }
 

@@ -82,7 +82,7 @@ impl RDES {
     /// Get an arbitrary field from RDES1
     pub fn get_rdes1(&self, field: RDES1) -> u32 {
         use RDES1::*;
-        let v = Volatile::new(&(self.v[0])).read(); // Volatile read of RDES0
+        let v = Volatile::new(&(self.v[1])).read(); // Volatile read of RDES1
         let masked = v & (field as u32);
         match field {
             // Handle numeric values

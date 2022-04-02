@@ -49,7 +49,7 @@ pub struct Board {
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub emac: EMACDriver<{ Board::M }, { Board::N }, { Board::P }, { Board::Q }>,
+    pub emac: EMACDriver,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -198,10 +198,6 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
-    const M: usize = 1024; // Ethernet TX buffer segment length in bytes
-    const N: usize = 10; // Ethernet TX number of buffer segments
-    const P: usize = 1024; // Ethernet RX buffer segment length in bytes
-    const Q: usize = 12; // Ethernet RX number of buffer segments
 
     // Initialize peripherals
     pub(crate) fn new() -> Board {
@@ -256,7 +252,7 @@ impl Board {
         //     Get MAC address from read-only memory
         let macaddr = drivers::emac::get_rom_macaddr(&peripherals.FLASH_CTRL);
         //     Initialize EMAC driver
-        let emac: EMACDriver<{ Board::M }, { Board::N }, { Board::P }, { Board::Q }> =
+        let emac: EMACDriver =
             EMACDriver::new(
                 &sysctl.power_control,
                 |pc| ephy_reset(pc),

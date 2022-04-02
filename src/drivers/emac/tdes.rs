@@ -1,5 +1,37 @@
 use volatile::Volatile;
 
+/// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
+///
+/// We don't know where the descriptors are, so we have to initialize by chasing the buffer around
+/// and hoping for the best
+#[repr(C, align(4))]
+pub struct TXDL {
+    /// Address of start of descriptor list
+    txdladdr: *mut TDES,
+    /// Volatile access to current descriptor
+    tdes: TDES,
+}
+
+impl TXDL {
+    pub fn new(txdladdr: *mut TDES) -> TXDL {
+        TXDL {
+            txdladdr: txdladdr,
+            tdes: unsafe { *txdladdr },
+        }
+    }
+
+    pub fn next(&mut self) -> &mut TXDL {
+        unsafe {
+            if self.tdes.get_tdes0(TDES0::TCH) != 0 {  // We are chaining to the next descriptor in the list
+                self.tdes = *(self.tdes.get_next_pointer() as *mut TDES);
+            } else {  // We are looping back to the start of the list
+                self.tdes = *self.txdladdr;
+            }
+        }
+        self
+    }
+}
+
 /// TX buffer descriptor field definitions.
 ///
 /// "Descriptor" structure is the software interface with the direct memory access controller.
@@ -8,11 +40,11 @@ use volatile::Volatile;
 /// and information about how the content of the buffer should be interpreted
 ///
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
-/// 
+///
 /// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
 /// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
 /// values within the struct, hence the repr(C).
-/// 
+///
 /// See datasheet Figure 23-3 for layout.
 #[derive(Clone, Copy)]
 #[repr(C, align(4))]
@@ -63,6 +95,18 @@ impl TDES {
         self.v[2] = ptr;
     }
 
+    /// Get the raw pointer to the next descriptor in the ring
+    pub fn get_next_pointer(&self) -> u32 {
+        let vv = Volatile::new(&(self.v[3]));
+        vv.read()
+    }
+
+    /// Get the raw pointer to the buffer segment associated with this
+    pub fn get_buffer_pointer(&self) -> u32 {
+        let vv = Volatile::new(&(self.v[2]));
+        vv.read()
+    }
+
     /// Set number of bytes to send from this buffer, in bytes, truncated to 12 bits.
     /// Clears existing value.
     pub fn set_buffer_size(&mut self, n: u16) {
@@ -86,10 +130,44 @@ impl TDES {
         let mut vv = Volatile::new(&mut (self.v[1])); // Volatile representation of TDES1
         vv.update(|val| *val |= field as u32); // Volatile read-modify-write
     }
+
+    /// Get an arbitrary field from TDES0
+    pub fn get_tdes0(&self, field: TDES0) -> u32 {
+        use TDES0::*;
+        let v = Volatile::new(&(self.v[0])).read(); // Volatile read of TDES0
+        let masked = v & (field as u32);
+        match field {
+            // Handle numeric values
+            CC => masked >> 3,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1,
+            },
+        }
+    }
+
+    /// Get an arbitrary field from TDES1
+    pub fn get_tdes1(&self, field: TDES1) -> u32 {
+        use TDES1::*;
+        let v = Volatile::new(&(self.v[1])).read(); // Volatile read of TDES1
+        let masked = v & (field as u32);
+        match field {
+            // Handle numeric values
+            TBS1 => masked,
+            TBS2 => masked >> 16,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1,
+            },
+        }
+    }
 }
 
 /// TX descriptor field masks for the first word (TDES0)
 /// See datasheet Table 23-2
+#[derive(Clone, Copy)]
 #[repr(u32)]
 pub enum TDES0 {
     // Status flag set by the DMA or the user to transfer ownership
@@ -165,6 +243,7 @@ pub enum TDES0 {
 
 /// TX descriptor field masks for second word (TDES1)
 /// See datasheet table 23-3
+#[derive(Clone, Copy)]
 #[repr(u32)]
 pub enum TDES1 {
     /// Use MAC address register 1 instead of 0

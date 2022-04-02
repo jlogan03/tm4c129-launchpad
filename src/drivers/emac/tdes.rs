@@ -1,34 +1,43 @@
 use volatile::Volatile;
 
+
 /// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
-/// We don't know where the descriptors are, so we have to initialize by chasing the buffer around
-/// and hoping for the best
+/// We don't know where the descriptors are, so we have to chase the buffer around
+/// and hope for the best
 #[repr(C, align(4))]
 pub struct TXDL {
     /// Address of start of descriptor list
-    txdladdr: *mut TDES,
-    /// Volatile access to current descriptor
-    tdes: TDES,
+    pub txdladdr: *mut TDES,
+    /// Address of current descriptor
+    pub tdesref: *mut TDES,
 }
 
 impl TXDL {
+    /// Initialize with the current descriptor pointed at the start of the list.
+    /// 
+    /// The configuration of each descriptor must be updated by the driver.
     pub fn new(txdladdr: *mut TDES) -> TXDL {
         TXDL {
             txdladdr: txdladdr,
-            tdes: unsafe { *txdladdr },
+            tdesref: txdladdr,
         }
     }
 
-    pub fn next(&mut self) -> &mut TXDL {
-        unsafe {
-            if self.tdes.get_tdes0(TDES0::TCH) != 0 {  // We are chaining to the next descriptor in the list
-                self.tdes = *(self.tdes.get_next_pointer() as *mut TDES);
-            } else {  // We are looping back to the start of the list
-                self.tdes = *self.txdladdr;
-            }
+    /// Move the address of the current descriptor to the next one in the chain
+    /// or loop back to the start if this is the last one
+    pub unsafe fn next(&mut self){
+        let tdes: TDES = *self.tdesref;
+        if tdes.get_tdes0(TDES0::TCH) != 0 {  // We are chaining to the next descriptor in the list
+            self.tdesref = (*self.tdesref).get_next_pointer() as *mut TDES;
+        } else {  // We are looping back to the start of the list
+            self.tdesref = self.txdladdr;
         }
-        self
+    }
+
+    /// Dereference the current descriptor
+    pub unsafe fn get(&self) -> TDES {
+        *self.tdesref
     }
 }
 

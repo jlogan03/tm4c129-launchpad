@@ -53,7 +53,11 @@ pub fn stellaris_main(mut board: board::Board) {
             .unwrap_or_default();
 
             // Debugging
-            // writeln!(uart, "TX Descriptor 0 Word 0: {}", board.emac.tx_descriptors[0].v[0]).unwrap_or_default();
+            unsafe{
+                let descr = board.emac.txdl.get();
+                writeln!(uart, "TX Descriptor 0 Word 0: {}", descr.v[0]).unwrap_or_default();
+                writeln!(uart, "TX Descriptor 0 Owned: {}", descr.is_owned()).unwrap_or_default();
+            }
             // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 3: {}", board.emac.tx_descriptors[0].v[3]).unwrap_or_default();

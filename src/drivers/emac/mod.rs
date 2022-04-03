@@ -74,7 +74,8 @@ pub struct EMACDriver {
     // RX/TX structures
     /// Volatile access to TX descriptor list
     pub txdl: TXDL,
-    // Volatile access to RX descriptor list
+    /// Volatile access to RX descriptor list
+    pub rxdl: RXDL,
 }
 
 impl EMACDriver {
@@ -128,6 +129,7 @@ impl EMACDriver {
             tx_thresh: tx_thresh,
 
             txdl: TXDL::new(txdladdr),
+            rxdl: RXDL::new(rxdladdr),
         };
         // Write registers and populate buffers
         emacdriver.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
@@ -325,15 +327,19 @@ impl EMACDriver {
         // Set up ring buffers per datasheet section 23.3.2.5
 
         // Populate the first TX descriptor
-        let mut descr: TDES;
-        unsafe {
-            descr = self.txdl.get();
-        }
-        descr.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-        descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
-        descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
-        descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
+        // let mut descr: TDES;
+        // unsafe{descr = self.txdl.get();}
+        // descr.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
+        // descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+        // descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+        // descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
+
+        // Start the DMA
+        self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
+        self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
     }
+
+    // pub fn transmit(&mut self) -> Result<
 }
 
 /// Choices of preamble length in bytes.

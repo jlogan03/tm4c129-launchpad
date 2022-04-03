@@ -1,5 +1,47 @@
 use volatile::Volatile;
 
+/// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
+///
+/// We don't know where the descriptors are, so we have to chase the buffer around
+/// and hope for the best
+#[repr(C, align(4))]
+pub struct RXDL {
+    /// Address of start of descriptor list
+    pub rxdladdr: *mut RDES,
+    /// Address of current descriptor
+    pub rdesref: *mut RDES,
+}
+
+impl RXDL {
+    /// Initialize with the current descriptor pointed at the start of the list.
+    /// 
+    /// The configuration of each descriptor must be updated by the driver.
+    pub fn new(rxdladdr: *mut RDES) -> RXDL {
+        RXDL {
+            rxdladdr: rxdladdr,
+            rdesref: rxdladdr,
+        }
+    }
+
+    /// Move the address of the current descriptor to the next one in the chain
+    /// or loop back to the start if this is the last one
+    pub unsafe fn next(&mut self) -> &mut RXDL {
+        let rdes: RDES = *self.rdesref;
+        if rdes.get_rdes1(RDES1::RCH) != 0 {  // We are chaining to the next descriptor in the list
+            self.rdesref = (*self.rdesref).get_next_pointer() as *mut RDES;
+        } else {  // We are looping back to the start of the list
+            self.rdesref = self.rxdladdr;
+        }
+        self
+    }
+
+    /// Dereference the current descriptor
+    pub unsafe fn get(&self) -> RDES {
+        *self.rdesref
+    }
+}
+
+
 /// RX buffer descriptor field definitions.
 ///
 /// "Descriptor" structure is the software interface with the direct memory access controller.
@@ -26,7 +68,7 @@ impl RDES {
         RDES { v: [0_u32; 8] }
     }
 
-    /// Check if software owns this descriptor, or the DMA
+    /// Check if software owns this descriptor
     pub fn is_owned(&self) -> bool {
         let vv = Volatile::new(&(self.v[0]));
         if vv.read() & RDES0::OWN as u32 != 0 {
@@ -49,12 +91,26 @@ impl RDES {
 
     /// Set the pointer to the next descriptor in the ring
     pub fn set_next_pointer(&mut self, ptr: u32) {
-        self.v[3] = ptr;
+        let mut vv = Volatile::new(&mut (self.v[3]));
+        vv.write(ptr);
     }
 
     /// Set the pointer to the buffer segment associated with this
     pub fn set_buffer_pointer(&mut self, ptr: u32) {
-        self.v[2] = ptr;
+        let mut vv = Volatile::new(&mut (self.v[2]));
+        vv.write(ptr);
+    }
+
+    /// Get the pointer to the next descriptor in the ring
+    pub fn get_next_pointer(&mut self) -> u32 {
+        let mut vv = Volatile::new(&(self.v[3]));
+        vv.read()
+    }
+
+    /// Get the pointer to the buffer segment
+    pub fn get_buffer_pointer(&self) -> u32 {
+        let mut vv = Volatile::new(&(self.v[2]));
+        vv.read()
     }
 
     /// Get number of bytes to receive from this buffer, in bytes.

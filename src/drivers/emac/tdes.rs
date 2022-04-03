@@ -68,7 +68,7 @@ impl TDES {
         TDES { v: [0_u32; 8] }
     }
 
-    /// Check if software owns this descriptor, or the DMA
+    /// Check if software owns this descriptor
     pub fn is_owned(&self) -> bool {
         let vv = Volatile::new(&(self.v[0]));
         if vv.read() & TDES0::OWN as u32 != 0 {

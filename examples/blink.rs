@@ -12,7 +12,7 @@ use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use tm4c129_launchpad::{board, drivers::emac};
+use tm4c129_launchpad::{board, drivers::ethernet};
 use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;

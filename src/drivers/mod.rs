@@ -1,4 +1,4 @@
 //! Drivers for internal peripherals
 
-pub mod emac;
+pub mod ethernet;
 pub mod epi;

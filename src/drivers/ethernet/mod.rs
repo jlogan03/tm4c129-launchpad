@@ -40,7 +40,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 /// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
 /// values within the struct, hence the repr(C).
 #[repr(C, align(4))]
-pub struct EMACDriver {
+pub struct EthernetDriver {
     // EMAC
     /// EMAC peripheral registers
     pub emac: EMAC0,
@@ -78,7 +78,7 @@ pub struct EMACDriver {
     pub rxdl: RXDL,
 }
 
-impl EMACDriver {
+impl EthernetDriver {
     // Send raw ethernet frame that includes destination address, etc.
     // pub async fn transmit(data: &[u8]) {}
 
@@ -103,7 +103,7 @@ impl EMACDriver {
         rx_thresh: RXThresholdDMA,
         rx_burst_size: BurstSizeDMA,
         tx_burst_size: BurstSizeDMA,
-    ) -> EMACDriver
+    ) -> EthernetDriver
     where
         F: Fn(&PowerControl) -> EphyR,
         G: Fn(&PowerControl) -> EmacR,
@@ -113,7 +113,7 @@ impl EMACDriver {
         let rxdladdr: *mut RDES = emac.rxdladdr.read().bits() as *mut RDES;
 
         // Build driver struct & initialize descriptor lists from SRAM
-        let mut emacdriver: EMACDriver = EMACDriver {
+        let mut emacdriver: EthernetDriver = EthernetDriver {
             emac: emac,
             system_clk_freq: system_clk_freq,
             src_macaddr: src_macaddr,

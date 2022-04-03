@@ -8,7 +8,7 @@ use tm4c129x_hal::sysctl::{
 use tm4c129x_hal::time::Hertz;
 
 use crate::drivers;
-use crate::drivers::emac::{EMACDriver, EmacR, EphyR};
+use crate::drivers::ethernet::{EthernetDriver, EmacR, EphyR};
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -49,7 +49,7 @@ pub struct Board {
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub emac: EMACDriver,
+    pub emac: EthernetDriver,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -250,10 +250,10 @@ impl Board {
         //     Power-on and enable EMAC0 and EPHY0 peripherals
         emac_enable(&sysctl.power_control);
         //     Get MAC address from read-only memory
-        let macaddr = drivers::emac::get_rom_macaddr(&peripherals.FLASH_CTRL);
+        let macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
         //     Initialize EMAC driver
-        let emac: EMACDriver =
-            EMACDriver::new(
+        let emac: EthernetDriver =
+            EthernetDriver::new(
                 &sysctl.power_control,
                 |pc| ephy_reset(pc),
                 |pc| emac_reset(pc),
@@ -261,15 +261,15 @@ impl Board {
                 system_clk_freq,
                 macaddr,
                 true,
-                drivers::emac::PreambleLength::_7,
-                drivers::emac::InterFrameGap::_96,
-                drivers::emac::BackOffLimit::_1024,
+                drivers::ethernet::PreambleLength::_7,
+                drivers::ethernet::InterFrameGap::_96,
+                drivers::ethernet::BackOffLimit::_1024,
                 true,
                 true,
-                drivers::emac::TXThresholdDMA::_32,
-                drivers::emac::RXThresholdDMA::_32,
-                drivers::emac::BurstSizeDMA::_4,
-                drivers::emac::BurstSizeDMA::_4,
+                drivers::ethernet::TXThresholdDMA::_32,
+                drivers::ethernet::RXThresholdDMA::_32,
+                drivers::ethernet::BurstSizeDMA::_4,
+                drivers::ethernet::BurstSizeDMA::_4,
             );
 
         Board {

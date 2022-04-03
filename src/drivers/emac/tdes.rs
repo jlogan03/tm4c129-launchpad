@@ -1,6 +1,5 @@
 use volatile::Volatile;
 
-
 /// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
 /// We don't know where the descriptors are, so we have to chase the buffer around
@@ -15,7 +14,7 @@ pub struct TXDL {
 
 impl TXDL {
     /// Initialize with the current descriptor pointed at the start of the list.
-    /// 
+    ///
     /// The configuration of each descriptor must be updated by the driver.
     pub fn new(txdladdr: *mut TDES) -> TXDL {
         TXDL {
@@ -28,9 +27,11 @@ impl TXDL {
     /// or loop back to the start if this is the last one
     pub unsafe fn next(&mut self) -> &mut TXDL {
         let tdes: TDES = *self.tdesref;
-        if tdes.get_tdes0(TDES0::TCH) != 0 {  // We are chaining to the next descriptor in the list
+        if tdes.get_tdes0(TDES0::TCH) != 0 {
+            // We are chaining to the next descriptor in the list
             self.tdesref = (*self.tdesref).get_next_pointer() as *mut TDES;
-        } else {  // We are looping back to the start of the list
+        } else {
+            // We are looping back to the start of the list
             self.tdesref = self.txdladdr;
         }
         self

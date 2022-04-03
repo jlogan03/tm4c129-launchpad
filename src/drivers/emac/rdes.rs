@@ -14,7 +14,7 @@ pub struct RXDL {
 
 impl RXDL {
     /// Initialize with the current descriptor pointed at the start of the list.
-    /// 
+    ///
     /// The configuration of each descriptor must be updated by the driver.
     pub fn new(rxdladdr: *mut RDES) -> RXDL {
         RXDL {
@@ -27,9 +27,11 @@ impl RXDL {
     /// or loop back to the start if this is the last one
     pub unsafe fn next(&mut self) -> &mut RXDL {
         let rdes: RDES = *self.rdesref;
-        if rdes.get_rdes1(RDES1::RCH) != 0 {  // We are chaining to the next descriptor in the list
+        if rdes.get_rdes1(RDES1::RCH) != 0 {
+            // We are chaining to the next descriptor in the list
             self.rdesref = (*self.rdesref).get_next_pointer() as *mut RDES;
-        } else {  // We are looping back to the start of the list
+        } else {
+            // We are looping back to the start of the list
             self.rdesref = self.rxdladdr;
         }
         self
@@ -41,7 +43,6 @@ impl RXDL {
     }
 }
 
-
 /// RX buffer descriptor field definitions.
 ///
 /// "Descriptor" structure is the software interface with the direct memory access controller.
@@ -50,11 +51,11 @@ impl RXDL {
 /// and information about how the content of the buffer should be interpreted
 ///
 /// Assumes we are using 8-word descriptors ("alternate descriptor size" peripheral config).
-/// 
+///
 /// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
 /// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
 /// values within the struct, hence the repr(C).
-/// 
+///
 /// See datasheet Figure 23-4 for layout.
 #[derive(Clone, Copy)]
 #[repr(C, align(4))]
@@ -130,9 +131,9 @@ impl RDES {
             // Handle all flag fields as integer representation of bool
             _ => match masked {
                 0 => 0,
-                _ => 1
-            }
-        } 
+                _ => 1,
+            },
+        }
     }
 
     /// Get an arbitrary field from RDES1
@@ -147,9 +148,9 @@ impl RDES {
             // Handle all flag fields as integer representation of bool
             _ => match masked {
                 0 => 0,
-                _ => 1
-            }
-        } 
+                _ => 1,
+            },
+        }
     }
 
     /// Set an arbitrary field in RDES1
@@ -158,7 +159,7 @@ impl RDES {
         let mut v = Volatile::new(&mut (self.v[1])); // Volatile reference to RDES1
         let x: u16 = match value {
             Some(x) => x,
-            None => 0_u16
+            None => 0_u16,
         };
         let masked = (x & (0b0000_1111_1111_1111 as u16)) as u32;
         match field {
@@ -166,16 +167,15 @@ impl RDES {
             RBS1 => {
                 v.update(|val| *val &= !(RBS1 as u32)); // Clear field via read-modify-write
                 v.update(|val| *val |= masked); // Set new value
-            },
+            }
             RBS2 => {
                 v.update(|val| *val &= !(RBS2 as u32)); // Clear field via read-modify-write
                 v.update(|val| *val |= masked << 16); // Set new value
-            },
+            }
             // Handle all flag fields
-            _ => v.update(|val| *val |= field as u32)
+            _ => v.update(|val| *val |= field as u32),
         }
     }
-
 }
 
 /// TX descriptor field masks for the first word (RDES0)

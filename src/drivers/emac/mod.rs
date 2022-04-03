@@ -334,9 +334,15 @@ impl EMACDriver {
         // descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
         // descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
 
-        // Start the DMA
-        self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
-        self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
+        // Start DMA transmit/receive
+        // The datasheet indicates that clearing this bit should start the DMA, but
+        // the TI drivers set the bit to start it instead - looks like the datasheet is backwards
+        self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
+        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
+
+        // Start EMAC transmit/receive
+        self.emac.cfg.modify(|_, w| w.te().set_bit());
+        self.emac.cfg.modify(|_, w| w.re().set_bit());
     }
 
     // pub fn transmit(&mut self) -> Result<

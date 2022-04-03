@@ -93,6 +93,7 @@ impl EthernetDriver {
         emac: EMAC0,
         system_clk_freq: PllOutputFrequency,
         src_macaddr: [u8; 6],
+        // src_ipaddr: 
         checksum_offload: bool,
         preamble_length: PreambleLength,
         interframe_gap: InterFrameGap,
@@ -364,7 +365,6 @@ impl EthernetDriver {
             // We do not own the current descriptor and can't use it to send data
             Err(())
         }
-        
     }
 }
 

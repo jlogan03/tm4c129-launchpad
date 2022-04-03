@@ -335,8 +335,6 @@ impl EMACDriver {
         // descr.set_tdes1(TDES1::SaiReplace); // Replace source address in frame with value programmed into peripheral
 
         // Start DMA transmit/receive
-        // The datasheet indicates that clearing this bit should start the DMA, but
-        // the TI drivers set the bit to start it instead - looks like the datasheet is backwards
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
 

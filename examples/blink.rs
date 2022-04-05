@@ -33,7 +33,7 @@ pub fn stellaris_main(mut board: board::Board) {
     );
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
-    let macaddr: [u8; 6] = board.emac.src_macaddr;
+    let macaddr: [u8; 6] = board.enet.src_macaddr;
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;
@@ -54,7 +54,7 @@ pub fn stellaris_main(mut board: board::Board) {
 
             // Debugging
             unsafe{
-                let descr = board.emac.txdl.get();
+                let descr = board.enet.txdl.get();
                 writeln!(uart, "TX Descriptor 0 Word 0: {}", descr.v[0]).unwrap_or_default();
                 writeln!(uart, "TX Descriptor 0 Owned: {}", descr.is_owned()).unwrap_or_default();
             }

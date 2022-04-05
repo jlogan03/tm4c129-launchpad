@@ -49,7 +49,7 @@ pub struct Board {
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub emac: EthernetDriver,
+    pub enet: EthernetDriver,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -250,16 +250,24 @@ impl Board {
         //     Power-on and enable EMAC0 and EPHY0 peripherals
         emac_enable(&sysctl.power_control);
         //     Get MAC address from read-only memory
-        let macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
+        let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
+        let src_ipaddr = [10, 0, 0, 2];
+        let src_port: u16 = 8053;
+        let dst_port: u16 = 8053;
+        let dst_ipaddr = [10, 0, 0, 1];
         //     Initialize EMAC driver
-        let emac: EthernetDriver =
+        let enet: EthernetDriver =
             EthernetDriver::new(
                 &sysctl.power_control,
                 |pc| ephy_reset(pc),
                 |pc| emac_reset(pc),
                 peripherals.EMAC0,
                 system_clk_freq,
-                macaddr,
+                src_macaddr,
+                src_ipaddr,
+                src_port,
+                dst_ipaddr,
+                dst_port,
                 true,
                 drivers::ethernet::PreambleLength::_7,
                 drivers::ethernet::InterFrameGap::_96,
@@ -289,7 +297,7 @@ impl Board {
             portn_control: pins_gpion.control,
             portj_control: pins_gpioj.control,
 
-            emac,
+            enet,
 
             // ----------------------------------
             WATCHDOG0: peripherals.WATCHDOG0,

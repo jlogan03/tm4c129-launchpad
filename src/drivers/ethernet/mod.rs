@@ -31,7 +31,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     addr
 }
 
-/// Configuration & TX/RX for EMAC0 peripheral
+/// Configuration of EMAC0 peripheral as a UDP socket for a single connection
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
@@ -46,8 +46,7 @@ pub struct EthernetDriver {
     pub emac: EMAC0,
     /// System clock frequency
     pub system_clk_freq: PllOutputFrequency,
-    /// Source mac address
-    pub src_macaddr: [u8; 6],
+
     /// Use processor-offloaded checksum calc peripheral
     pub checksum_offload: bool,
     /// Clock-sync preamble length
@@ -71,6 +70,18 @@ pub struct EthernetDriver {
     /// TX DMA burst size
     pub tx_burst_size: BurstSizeDMA,
 
+    // Addressing
+    /// Source mac address
+    pub src_macaddr: [u8; 6],
+    /// Source IP address
+    pub src_ipaddr: [u8; 4],
+    /// Source port
+    pub src_port: u16,
+    /// Destination IP address
+    pub dst_ipaddr: [u8; 4],
+    /// Destination port
+    pub dst_port: u16,
+
     // RX/TX structures
     /// Volatile access to TX descriptor list
     pub txdl: TXDL,
@@ -93,7 +104,10 @@ impl EthernetDriver {
         emac: EMAC0,
         system_clk_freq: PllOutputFrequency,
         src_macaddr: [u8; 6],
-        // src_ipaddr: 
+        src_ipaddr: [u8; 4],
+        src_port: u16,
+        dst_ipaddr: [u8; 4],
+        dst_port: u16,
         checksum_offload: bool,
         preamble_length: PreambleLength,
         interframe_gap: InterFrameGap,
@@ -114,10 +128,9 @@ impl EthernetDriver {
         let rxdladdr: *mut RDES = emac.rxdladdr.read().bits() as *mut RDES;
 
         // Build driver struct & initialize descriptor lists from SRAM
-        let mut emacdriver: EthernetDriver = EthernetDriver {
+        let mut enet: EthernetDriver = EthernetDriver {
             emac: emac,
             system_clk_freq: system_clk_freq,
-            src_macaddr: src_macaddr,
             checksum_offload: checksum_offload,
             preamble_length: preamble_length,
             interframe_gap: interframe_gap,
@@ -129,13 +142,19 @@ impl EthernetDriver {
             rx_thresh: rx_thresh,
             tx_thresh: tx_thresh,
 
+            src_macaddr: src_macaddr,
+            src_ipaddr: src_ipaddr,
+            src_port: src_port,
+            dst_ipaddr: dst_ipaddr,
+            dst_port: dst_port,
+
             txdl: TXDL::new(txdladdr),
             rxdl: RXDL::new(rxdladdr),
         };
         // Write registers and populate buffers
-        emacdriver.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
+        enet.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
 
-        emacdriver
+        enet
     }
 
     /// 1. Reset to clear configuration
@@ -342,7 +361,7 @@ impl EthernetDriver {
     }
 
     /// Send an ethernet frame that has been reduced to bytes
-    pub unsafe fn transmit<const N: usize>(&mut self, data: &[u8; N]) -> Result<(), ()> {
+    unsafe fn hw_transmit<const N: usize>(&mut self, data: &[u8; N]) -> Result<(), ()> {
         let mut descr = self.txdl.get();
         if descr.is_owned() {
             // We own the current descriptor; load our data into the buffer and tell the DMA to send it
@@ -366,6 +385,11 @@ impl EthernetDriver {
             Err(())
         }
     }
+
+    // pub fn transmit<const N: usize>(&mut self, data: [u8; N]) -> Result<(), ()> {
+        
+    //     Ok(())
+    // }
 }
 
 /// Choices of preamble length in bytes.

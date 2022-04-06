@@ -19,7 +19,7 @@ use tm4c129x_hal::time::Bps;
 use catnip::{MACAddr, ip::IPV4Addr};
 use tm4c129_launchpad::{board, drivers::ethernet::socket::UDPSocket};
 
-const M: usize = 2;  // Fixed UDP transmission data length in 32-bit words
+const M: usize = 3;  // Fixed UDP transmission data length in 32-bit words
 
 
 #[no_mangle]
@@ -70,6 +70,9 @@ pub fn stellaris_main(mut board: board::Board) {
                 let descr = board.enet.txdl.get();
                 writeln!(uart, "TX Descriptor 0 Word 0: {}", descr.v[0]).unwrap_or_default();
                 writeln!(uart, "TX Descriptor 0 Owned: {}", descr.is_owned()).unwrap_or_default();
+
+                let data: [u8; 12] = *b"hello world!";
+                udp.transmit(&mut board.enet, data, 100);
             }
             // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();

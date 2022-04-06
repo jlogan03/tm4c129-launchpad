@@ -1,5 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
+mod packet;
 mod rdes;
 mod tdes; // TX descriptor ring definitions // RX ...
 
@@ -7,8 +8,6 @@ use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
-
-use volatile::Volatile;
 
 use self::rdes::*;
 use self::tdes::*;
@@ -350,7 +349,6 @@ impl EthernetDriver {
         // let mut descr: TDES;
         // unsafe{descr = self.txdl.get();}
 
-
         // Start DMA transmit/receive
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
@@ -360,37 +358,40 @@ impl EthernetDriver {
         self.emac.cfg.modify(|_, w| w.re().set_bit());
     }
 
-    /// Send an ethernet frame that has been reduced to bytes
-    unsafe fn hw_transmit<const N: usize>(&mut self, data: &[u8; N]) -> Result<(), ()> {
-        let mut descr = self.txdl.get();
-        if descr.is_owned() {
-            // We own the current descriptor; load our data into the buffer and tell the DMA to send it
-            //    Load data into buffer
-            let mut _buffer: [u8; N] = *(descr.get_buffer_pointer() as *mut [u8; N]);
-            _buffer = *data;
-            //    Set buffer length
-            descr.set_buffer_size(N as u16);
-            //    Set common settings
-            descr.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-            descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
-            descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
-            descr.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
-            //    Give this descriptor & buffer back to the DMA
-            descr.give();
+    /// Attempt to send an ethernet frame that has been reduced to bytes
+    unsafe fn transmit<const N: usize>(
+        &mut self,
+        data: &[u8; N],
+        attempts: usize,
+    ) -> Result<(), ()> {
+        for i in 0..attempts {
+            let mut descr = self.txdl.get();
+            if descr.is_owned() {
+                // We own the current descriptor; load our data into the buffer and tell the DMA to send it
+                //    Load data into buffer
+                let mut _buffer: [u8; N] = *(descr.get_buffer_pointer() as *mut [u8; N]);
+                _buffer = *data;
+                //    Set buffer length
+                descr.set_buffer_size(N as u16);
+                //    Set common settings
+                descr.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
+                descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+                descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+                descr.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
+                                                    //    Give this descriptor & buffer back to the DMA
+                descr.give();
 
-            Ok(())
+                return Ok(());
+            } else {
+                // We do not own the current descriptor and can't use it to send data
+                // Go to the next descriptor
+                self.txdl.next();
+            }
         }
-        else {
-            // We do not own the current descriptor and can't use it to send data
-            Err(())
-        }
+        return Err(());
     }
-
-    // pub fn transmit<const N: usize>(&mut self, data: [u8; N]) -> Result<(), ()> {
-        
-    //     Ok(())
-    // }
 }
+
 
 /// Choices of preamble length in bytes.
 ///
@@ -475,7 +476,6 @@ pub enum BurstSizeDMA {
     // _128,
     // _256,
 }
-
 
 ///
 pub enum EthernetError {

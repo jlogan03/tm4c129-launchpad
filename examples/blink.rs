@@ -38,7 +38,7 @@ pub fn stellaris_main(mut board: board::Board) {
     );
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
-    let udp: UDPSocket<M> = UDPSocket {
+    let udp = UDPSocket {
         src_macaddr: MACAddr{value: board.enet.src_macaddr},
         src_ipaddr: IPV4Addr{value: [10, 0, 0, 2]},
         src_port: 8053,
@@ -71,8 +71,7 @@ pub fn stellaris_main(mut board: board::Board) {
                 writeln!(uart, "TX Descriptor 0 Word 0: {}", descr.v[0]).unwrap_or_default();
                 writeln!(uart, "TX Descriptor 0 Owned: {}", descr.is_owned()).unwrap_or_default();
 
-                let data: [u8; 12] = *b"hello world!";
-                udp.transmit(&mut board.enet, data, 100);
+                udp.transmit::<3>(&mut board.enet, *b"hello world!", 100);
             }
             // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();

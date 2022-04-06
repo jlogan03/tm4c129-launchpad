@@ -8,10 +8,7 @@ use catnip::{Data, MACAddr};
 use super::EthernetDriver;
 
 /// Thin adapter layer to generate UDP packets without constantly passing the address info in
-pub struct UDPSocket<const M: usize>
-where
-    [(); 4 * M]:,
-{
+pub struct UDPSocket {
     /// Source MAC address
     pub src_macaddr: MACAddr,
     /// Source IP address
@@ -26,17 +23,21 @@ where
     pub dst_port: u16,
 }
 
-impl<const M: usize> UDPSocket<M>
-where
-    [u8; 4 * M]:,
-    [u8; 4 * 0]:,
-    [u8; 4 * 0 + 20]:,
-    [u8; 4 * 0 + 20 + 4 * M + 8]:,
-    [u8; (4 * 0 + 20) + (4 * M) + 14 + 8]:,
-{
-
+impl UDPSocket {
     /// Build a UDP packet from data & pass it to the ethernet driver to transmit in hardware
-    pub fn transmit(&self, enet: &mut EthernetDriver, data: [u8; 4 * M], attempts: usize) -> Result<(), ()> {
+    pub fn transmit<const M: usize>(
+        &self,
+        enet: &mut EthernetDriver,
+        data: [u8; 4 * M],
+        attempts: usize,
+    ) -> Result<(), ()>
+    where
+        [u8; 4 * M]:,
+        [u8; 4 * 0]:,
+        [u8; 4 * 0 + 20]:,
+        [u8; 4 * 0 + 20 + 4 * M + 8]:,
+        [u8; (4 * 0 + 20) + (4 * M) + 14 + 8]:,
+    {
         let data: Data<M> = Data { value: data };
         let frame: [u8; (4 * 0 + 20) + (4 * M) + 14 + 8] = frame(
             data,
@@ -46,14 +47,15 @@ where
             self.dst_macaddr,
             self.dst_ipaddr,
             self.dst_port,
-        ).to_be_bytes();
+        )
+        .to_be_bytes();
 
-        unsafe{enet.transmit(frame, attempts)}
+        unsafe { enet.transmit(frame, attempts) }
     }
 }
 
 /// Build a standard UDP frame, including zeroed-out checksums which will be replaced by the hardware
-/// 
+///
 pub fn frame<const M: usize>(
     data: Data<M>,
     src_macaddr: MACAddr,

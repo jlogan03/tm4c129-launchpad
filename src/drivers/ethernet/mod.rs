@@ -1,6 +1,6 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
-mod packet;
+pub mod socket;
 mod rdes;
 mod tdes; // TX descriptor ring definitions // RX ...
 
@@ -359,18 +359,18 @@ impl EthernetDriver {
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes
-    unsafe fn transmit<const N: usize>(
+    pub unsafe fn transmit<const N: usize>(
         &mut self,
-        data: &[u8; N],
+        data: [u8; N],
         attempts: usize,
     ) -> Result<(), ()> {
-        for i in 0..attempts {
+        for _ in 0..attempts {
             let mut descr = self.txdl.get();
             if descr.is_owned() {
                 // We own the current descriptor; load our data into the buffer and tell the DMA to send it
                 //    Load data into buffer
                 let mut _buffer: [u8; N] = *(descr.get_buffer_pointer() as *mut [u8; N]);
-                _buffer = *data;
+                _buffer = data;
                 //    Set buffer length
                 descr.set_buffer_size(N as u16);
                 //    Set common settings

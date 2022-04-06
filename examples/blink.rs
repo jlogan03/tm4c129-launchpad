@@ -12,10 +12,15 @@ use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use tm4c129_launchpad::{board, drivers::ethernet};
 use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
+
+use catnip::{MACAddr, ip::IPV4Addr};
+use tm4c129_launchpad::{board, drivers::ethernet::socket::UDPSocket};
+
+const M: usize = 2;  // Fixed UDP transmission data length in 32-bit words
+
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) {
@@ -33,7 +38,14 @@ pub fn stellaris_main(mut board: board::Board) {
     );
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
-    let macaddr: [u8; 6] = board.enet.src_macaddr;
+    let udp: UDPSocket<M> = UDPSocket {
+        src_macaddr: MACAddr{value: board.enet.src_macaddr},
+        src_ipaddr: IPV4Addr{value: [10, 0, 0, 2]},
+        src_port: 8053,
+        dst_macaddr: None,
+        dst_ipaddr: IPV4Addr{value: [10, 0, 0, 1]},
+        dst_port: 8053,
+    };
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;
@@ -45,10 +57,11 @@ pub fn stellaris_main(mut board: board::Board) {
             writeln!(uart, "byte read {}", ch).unwrap_or_default();
 
             // Show MAC address
+            let addr = udp.src_macaddr.value;
             writeln!(
                 uart,
                 "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
-                macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]
+                addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
             )
             .unwrap_or_default();
 

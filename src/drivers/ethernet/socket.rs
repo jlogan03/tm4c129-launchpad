@@ -5,24 +5,29 @@ use catnip::ip::{IPV4Addr, IPV4Header, DSCP};
 use catnip::udp::{UDPHeader, UDPPacket};
 use catnip::{Data, MACAddr};
 
+use super::EthernetDriver;
+
 /// Thin adapter layer to generate UDP packets without constantly passing the address info in
-pub struct UDPSocket<const M: usize, F>
+pub struct UDPSocket<const M: usize>
 where
-    F: Fn([u8; (4 * 0 + 20) + (4 * M) + 14 + 8]) -> Result<(), ()>,
     [(); 4 * M]:,
 {
-    tfunc: F,
-    src_macaddr: MACAddr,
-    src_ipaddr: IPV4Addr,
-    src_port: u16,
-    dst_macaddr: Option<MACAddr>,
-    dst_ipaddr: IPV4Addr,
-    dst_port: u16,
+    /// Source MAC address
+    pub src_macaddr: MACAddr,
+    /// Source IP address
+    pub src_ipaddr: IPV4Addr,
+    /// Source port
+    pub src_port: u16,
+    /// Destination MAC address (can be None, and filled in by the network switch)
+    pub dst_macaddr: Option<MACAddr>,
+    /// Destination IP address
+    pub dst_ipaddr: IPV4Addr,
+    /// Destination port
+    pub dst_port: u16,
 }
 
-impl<const M: usize, F> UDPSocket<M, F>
+impl<const M: usize> UDPSocket<M>
 where
-    F: Fn([u8; (4 * 0 + 20) + (4 * M) + 14 + 8]) -> Result<(), ()>,
     [u8; 4 * M]:,
     [u8; 4 * 0]:,
     [u8; 4 * 0 + 20]:,
@@ -31,7 +36,7 @@ where
 {
 
     /// Build a UDP packet from data & pass it to the ethernet driver to transmit in hardware
-    pub fn transmit(&self, data: [u8; 4 * M]) -> Result<(), ()> {
+    pub fn transmit(&self, enet: &mut EthernetDriver, data: [u8; 4 * M], attempts: usize) -> Result<(), ()> {
         let data: Data<M> = Data { value: data };
         let frame: [u8; (4 * 0 + 20) + (4 * M) + 14 + 8] = frame(
             data,
@@ -43,7 +48,7 @@ where
             self.dst_port,
         ).to_be_bytes();
 
-        (self.tfunc)(frame)
+        unsafe{enet.transmit(frame, attempts)}
     }
 }
 

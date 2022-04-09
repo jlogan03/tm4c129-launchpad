@@ -73,15 +73,9 @@ pub fn stellaris_main(mut board: board::Board) {
 
             // Debugging
             unsafe {
-                writeln!(uart, "Current TX Descriptor Word 0: {}", board.enet.txdl.get().v[0]).unwrap_or_default();
-                writeln!(uart, "Current TX Descriptor Owned: {}", board.enet.txdl.is_owned())
-                    .unwrap_or_default();
-                writeln!(
-                    uart,
-                    "Current TX Descriptor Address: {}",
-                    board.enet.txdl.tdesref as u32
-                )
-                .unwrap_or_default();
+                // writeln!(uart, "Current TX Descriptor Word 0: {}", board.enet.txdl.get().v[0]).unwrap_or_default();
+                // writeln!(uart, "Current TX Descriptor Owned: {}", board.enet.txdl.is_owned()).unwrap_or_default();
+                writeln!(uart,"Root TX Descriptor Address: {}", board.enet.emac.txdladdr.read().bits()).unwrap_or_default();
 
                 // match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
                 //     Ok(num_attempts) => {
@@ -91,31 +85,6 @@ pub fn stellaris_main(mut board: board::Board) {
                 //     _ => (),
                 // };
 
-                // unsafe { board.enet.txdl.next() };
-
-                // writeln!(uart, "Current TX Descriptor Owned after Give: {}", {
-                //     descr.is_owned()
-                // })
-                // .unwrap_or_default();
-                // writeln!(
-                //     uart,
-                //     "Current TX Descriptor Address: {}",
-                //     descr.get_pointer()
-                // )
-                // .unwrap_or_default();
-                // writeln!(
-                //     uart,
-                //     "Next TX Descriptor Address: {}",
-                //     descr.get_next_pointer()
-                // )
-                // .unwrap_or_default();
-
-                // writeln!(
-                //     uart,
-                //     "Current TX Descriptor Chaining: {}",
-                //     descr.get_tdes0(TDES0::TCH)
-                // )
-                // .unwrap_or_default();
                 let txdl = &(board.enet.txdl);
                 writeln!(uart, "Descriptor List Status: {:?}", txdl).unwrap_or_default();
             }

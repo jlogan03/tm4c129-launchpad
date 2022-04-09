@@ -1,7 +1,6 @@
 //! TX buffer descriptor field definitions and volatile access
 
-use volatile::Volatile;
-use core::{ptr, fmt};
+use core::fmt;
 
 
 /// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
@@ -30,7 +29,6 @@ impl TXDL {
     /// Move the address of the current descriptor to the next one in the chain
     /// or loop back to the start if this is the last one
     pub unsafe fn next(&mut self) -> &mut TXDL {
-        let tdes: TDES = self.tdesref.read_volatile();
         if self.get_tdes0(TDES0::TCH) != 0 {
             // We are chaining to the next descriptor in the list
             self.tdesref = self.get_next_pointer() as *mut TDES;

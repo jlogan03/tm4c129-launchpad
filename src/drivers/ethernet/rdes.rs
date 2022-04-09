@@ -1,3 +1,5 @@
+//! RX buffer descriptor field definitions and volatile access
+
 use volatile::Volatile;
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
@@ -60,6 +62,7 @@ impl RXDL {
 #[derive(Clone, Copy)]
 #[repr(C, align(4))]
 pub struct RDES {
+    /// Content
     pub v: [u32; 8],
 }
 
@@ -104,13 +107,13 @@ impl RDES {
 
     /// Get the pointer to the next descriptor in the ring
     pub fn get_next_pointer(&mut self) -> u32 {
-        let mut vv = Volatile::new(&(self.v[3]));
+        let vv = Volatile::new(&(self.v[3]));
         vv.read()
     }
 
     /// Get the pointer to the buffer segment
     pub fn get_buffer_pointer(&self) -> u32 {
-        let mut vv = Volatile::new(&(self.v[2]));
+        let vv = Volatile::new(&(self.v[2]));
         vv.read()
     }
 

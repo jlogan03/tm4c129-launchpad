@@ -1,8 +1,8 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
 pub mod socket;
-mod rdes;
-mod tdes; // TX descriptor ring definitions // RX ...
+pub mod rdes;
+pub mod tdes; // TX descriptor ring definitions // RX ...
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
@@ -343,12 +343,6 @@ impl EthernetDriver {
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
 
-        // Set up ring buffers per datasheet section 23.3.2.5
-
-        // Populate the first TX descriptor
-        // let mut descr: TDES;
-        // unsafe{descr = self.txdl.get();}
-
         // Start DMA transmit/receive
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
@@ -359,12 +353,12 @@ impl EthernetDriver {
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes
-    pub unsafe fn transmit<const N: usize>(
+    pub unsafe fn transmit<const N: usize> (
         &mut self,
         data: [u8; N],
         attempts: usize,
-    ) -> Result<(), ()> {
-        for _ in 0..attempts {
+    ) -> Result<usize, ()> {
+        for i in 0..attempts {
             let mut descr = self.txdl.get();
             if descr.is_owned() {
                 // We own the current descriptor; load our data into the buffer and tell the DMA to send it
@@ -381,7 +375,7 @@ impl EthernetDriver {
                                                     //    Give this descriptor & buffer back to the DMA
                 descr.give();
 
-                return Ok(());
+                return Ok(i);
             } else {
                 // We do not own the current descriptor and can't use it to send data
                 // Go to the next descriptor

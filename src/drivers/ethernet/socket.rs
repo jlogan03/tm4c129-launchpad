@@ -30,7 +30,7 @@ impl UDPSocket {
         enet: &mut EthernetDriver,
         data: [u8; 4 * M],
         attempts: usize,
-    ) -> Result<(), ()>
+    ) -> Result<usize, ()>
     where
         [u8; 4 * M]:,
         [u8; 4 * 0]:,

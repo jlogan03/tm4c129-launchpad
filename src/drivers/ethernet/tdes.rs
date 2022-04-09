@@ -1,3 +1,5 @@
+//! TX buffer descriptor field definitions and volatile access
+
 use volatile::Volatile;
 
 /// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
@@ -60,6 +62,7 @@ impl TXDL {
 #[derive(Clone, Copy)]
 #[repr(C, align(4))]
 pub struct TDES {
+    /// Content
     pub v: [u32; 8],
 }
 

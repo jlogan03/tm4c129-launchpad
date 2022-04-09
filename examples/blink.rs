@@ -16,11 +16,11 @@ use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
 
-use catnip::{MACAddr, ip::IPV4Addr};
-use tm4c129_launchpad::{board, drivers::ethernet::socket::UDPSocket};
-
-const M: usize = 3;  // Fixed UDP transmission data length in 32-bit words
-
+use catnip::{ip::IPV4Addr, MACAddr};
+use tm4c129_launchpad::{
+    board,
+    drivers::ethernet::{socket::UDPSocket, tdes::TDES0},
+};
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) {
@@ -39,11 +39,17 @@ pub fn stellaris_main(mut board: board::Board) {
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
     let udp = UDPSocket {
-        src_macaddr: MACAddr{value: board.enet.src_macaddr},
-        src_ipaddr: IPV4Addr{value: [10, 0, 0, 2]},
+        src_macaddr: MACAddr {
+            value: board.enet.src_macaddr,
+        },
+        src_ipaddr: IPV4Addr {
+            value: [10, 0, 0, 2],
+        },
         src_port: 8053,
         dst_macaddr: None,
-        dst_ipaddr: IPV4Addr{value: [10, 0, 0, 1]},
+        dst_ipaddr: IPV4Addr {
+            value: [172, 17, 0, 1],
+        },
         dst_port: 8053,
     };
 
@@ -66,12 +72,64 @@ pub fn stellaris_main(mut board: board::Board) {
             .unwrap_or_default();
 
             // Debugging
-            unsafe{
+            unsafe {
                 let descr = board.enet.txdl.get();
-                writeln!(uart, "TX Descriptor 0 Word 0: {}", descr.v[0]).unwrap_or_default();
-                writeln!(uart, "TX Descriptor 0 Owned: {}", descr.is_owned()).unwrap_or_default();
+                writeln!(uart, "Current TX Descriptor Word 0: {}", descr.v[0]).unwrap_or_default();
+                writeln!(uart, "Current TX Descriptor Owned: {}", descr.is_owned())
+                    .unwrap_or_default();
+                writeln!(
+                    uart,
+                    "Current TX Descriptor Address: {}",
+                    descr.get_pointer()
+                )
+                .unwrap_or_default();
 
-                udp.transmit::<3>(&mut board.enet, *b"hello world!", 100);
+                match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
+                    Ok(num_attempts) => {
+                        writeln!(uart, "Number of UDP transmit attempts: {}", num_attempts)
+                            .unwrap_or_default()
+                    }
+                    _ => (),
+                };
+
+                // unsafe { board.enet.txdl.next() };
+
+                // writeln!(uart, "Current TX Descriptor Owned after Give: {}", {
+                //     descr.is_owned()
+                // })
+                // .unwrap_or_default();
+                // writeln!(
+                //     uart,
+                //     "Current TX Descriptor Address: {}",
+                //     descr.get_pointer()
+                // )
+                // .unwrap_or_default();
+                // writeln!(
+                //     uart,
+                //     "Next TX Descriptor Address: {}",
+                //     descr.get_next_pointer()
+                // )
+                // .unwrap_or_default();
+
+                // writeln!(
+                //     uart,
+                //     "Current TX Descriptor Chaining: {}",
+                //     descr.get_tdes0(TDES0::TCH)
+                // )
+                // .unwrap_or_default();
+
+                writeln!(uart, "Current TX Descriptor Errors\nES: {}\nIHE: {}\nJT: {}\nFF: {}\nIPE: {}\nLOC: {}\nNC: {}\nLC: {}\nEC: {}\nED: {}\nUF: {}\n", 
+                descr.get_tdes0(TDES0::ES),
+                descr.get_tdes0(TDES0::IHE),
+                descr.get_tdes0(TDES0::JT),
+                descr.get_tdes0(TDES0::FF), 
+                descr.get_tdes0(TDES0::IPE), 
+                descr.get_tdes0(TDES0::LOC), 
+                descr.get_tdes0(TDES0::NC), 
+                descr.get_tdes0(TDES0::LC), 
+                descr.get_tdes0(TDES0::EC), 
+                descr.get_tdes0(TDES0::ED), 
+                descr.get_tdes0(TDES0::UF)).unwrap_or_default();
             }
             // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();

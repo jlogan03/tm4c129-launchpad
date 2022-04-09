@@ -1,7 +1,7 @@
 //! TX buffer descriptor field definitions and volatile access
 
 use volatile::Volatile;
-use core::ptr;
+use core::{ptr, fmt};
 
 
 /// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
@@ -147,6 +147,99 @@ impl TXDL {
     }
 }
 
+impl fmt::Debug for TXDL {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // f.debug_struct("TX Descriptor List").field("\nStart Address", &self.txdladdr).finish()
+        unsafe{
+            write!(f, "
+            TX Descriptor List
+            ------------------
+            Root Descriptor Address: {}
+            Current Descriptor Address: {}
+            Current Descriptor
+              Owned by DMA: {}
+              Error Status
+                ES: {}
+                IHE: {}
+                JT: {}
+                FF: {}
+                IPE: {}
+                LOC: {}
+                NC: {}
+                LC: {}
+                EC: {}
+                ED: {}
+                UF: {}
+                Collision Count: {}
+              Configuration
+                Next Descriptor Address: {}
+                Buffer Address: {}
+                Buffer 1 Size: {}
+                Buffer 2 Size: {}
+                IC: {}
+                LS: {}
+                FS: {}
+                DC: {}
+                DP: {}
+                TTSE: {}
+                CRCR: {}
+                CicIPV4: {}
+                CicFrameOnly: {}
+                CicFull: {}
+                TER: {}
+                TCH: {}
+                VlanRemove: {}
+                VLanInsert: {}
+                VlanReplace: {}
+                TTSS: {}
+                SA1: {}
+                SaiInsert: {}
+                SaiReplace: {}
+                ",
+            self.txdladdr as u32,
+            self.tdesref as u32,
+            self.get_tdes0(TDES0::OWN),
+            self.get_tdes0(TDES0::ES),
+            self.get_tdes0(TDES0::IHE),
+            self.get_tdes0(TDES0::JT),
+            self.get_tdes0(TDES0::FF), 
+            self.get_tdes0(TDES0::IPE), 
+            self.get_tdes0(TDES0::LOC), 
+            self.get_tdes0(TDES0::NC), 
+            self.get_tdes0(TDES0::LC), 
+            self.get_tdes0(TDES0::EC), 
+            self.get_tdes0(TDES0::ED), 
+            self.get_tdes0(TDES0::UF),
+            self.get_tdes0(TDES0::CC),
+        
+            self.get_next_pointer(),
+            self.get_buffer_pointer(),
+            self.get_tdes1(TDES1::TBS1),
+            self.get_tdes1(TDES1::TBS2),
+            self.get_tdes0(TDES0::IC),
+            self.get_tdes0(TDES0::LS),
+            self.get_tdes0(TDES0::FS),
+            self.get_tdes0(TDES0::DC),
+            self.get_tdes0(TDES0::DP),
+            self.get_tdes0(TDES0::TTSE),
+            self.get_tdes0(TDES0::CRCR),
+            self.get_tdes0(TDES0::CicIPV4),
+            self.get_tdes0(TDES0::CicFrameOnly),
+            self.get_tdes0(TDES0::CicFull),
+            self.get_tdes0(TDES0::TER),
+            self.get_tdes0(TDES0::TCH),
+            self.get_tdes0(TDES0::VlanRemove),
+            self.get_tdes0(TDES0::VlanInsert),
+            self.get_tdes0(TDES0::VlanReplace),
+            self.get_tdes0(TDES0::TTSS),
+            self.get_tdes1(TDES1::SA1),
+            self.get_tdes1(TDES1::SaiInsert),
+            self.get_tdes1(TDES1::SaiReplace),
+        )
+        }
+    }
+}
+
 /// TX buffer descriptor layout.
 ///
 /// "Descriptor" structure is the software interface with the direct memory access controller.
@@ -178,7 +271,7 @@ pub enum TDES0 {
     OWN = 1 << 31,
     // To be set by the user
     /// Interrupt at end of transmission
-    TI = 1 << 30,
+    IC = 1 << 30,
     /// Last segment of the frame
     LS = 1 << 29,
     /// First segment of the frame

@@ -83,13 +83,13 @@ pub fn stellaris_main(mut board: board::Board) {
                 )
                 .unwrap_or_default();
 
-                match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
-                    Ok(num_attempts) => {
-                        writeln!(uart, "Number of UDP transmit attempts: {}", num_attempts)
-                            .unwrap_or_default()
-                    }
-                    _ => (),
-                };
+                // match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
+                //     Ok(num_attempts) => {
+                //         writeln!(uart, "Number of UDP transmit attempts: {}", num_attempts)
+                //             .unwrap_or_default()
+                //     }
+                //     _ => (),
+                // };
 
                 // unsafe { board.enet.txdl.next() };
 
@@ -117,18 +117,7 @@ pub fn stellaris_main(mut board: board::Board) {
                 // )
                 // .unwrap_or_default();
                 let txdl = &(board.enet.txdl);
-                writeln!(uart, "Current TX Descriptor Errors\nES: {}\nIHE: {}\nJT: {}\nFF: {}\nIPE: {}\nLOC: {}\nNC: {}\nLC: {}\nEC: {}\nED: {}\nUF: {}\n", 
-                txdl.get_tdes0(TDES0::ES),
-                txdl.get_tdes0(TDES0::IHE),
-                txdl.get_tdes0(TDES0::JT),
-                txdl.get_tdes0(TDES0::FF), 
-                txdl.get_tdes0(TDES0::IPE), 
-                txdl.get_tdes0(TDES0::LOC), 
-                txdl.get_tdes0(TDES0::NC), 
-                txdl.get_tdes0(TDES0::LC), 
-                txdl.get_tdes0(TDES0::EC), 
-                txdl.get_tdes0(TDES0::ED), 
-                txdl.get_tdes0(TDES0::UF)).unwrap_or_default();
+                writeln!(uart, "Descriptor List Status: {:?}", txdl).unwrap_or_default();
             }
             // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();

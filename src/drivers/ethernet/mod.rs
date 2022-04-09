@@ -1,7 +1,7 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
-pub mod socket;
 pub mod rdes;
+pub mod socket;
 pub mod tdes; // TX descriptor ring definitions // RX ...
 
 use tm4c129x_hal::{
@@ -353,27 +353,26 @@ impl EthernetDriver {
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes
-    pub unsafe fn transmit<const N: usize> (
+    pub unsafe fn transmit<const N: usize>(
         &mut self,
         data: [u8; N],
         attempts: usize,
     ) -> Result<usize, ()> {
         for i in 0..attempts {
-            let mut descr = self.txdl.get();
-            if descr.is_owned() {
+            if self.txdl.is_owned() {
                 // We own the current descriptor; load our data into the buffer and tell the DMA to send it
                 //    Load data into buffer
-                let mut _buffer: [u8; N] = *(descr.get_buffer_pointer() as *mut [u8; N]);
+                let mut _buffer: [u8; N] = *(self.txdl.get_buffer_pointer() as *mut [u8; N]);
                 _buffer = data;
                 //    Set buffer length
-                descr.set_buffer_size(N as u16);
+                self.txdl.set_buffer_size(N as u16);
                 //    Set common settings
-                descr.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-                descr.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
-                descr.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
-                descr.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
-                                                    //    Give this descriptor & buffer back to the DMA
-                descr.give();
+                self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
+                self.txdl.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+                self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+                self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
+
+                self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
                 return Ok(i);
             } else {
@@ -385,7 +384,6 @@ impl EthernetDriver {
         return Err(());
     }
 }
-
 
 /// Choices of preamble length in bytes.
 ///

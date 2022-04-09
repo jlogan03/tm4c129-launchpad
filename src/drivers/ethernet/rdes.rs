@@ -1,6 +1,8 @@
 //! RX buffer descriptor field definitions and volatile access
 
 use volatile::Volatile;
+use core::ptr;
+
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
@@ -83,9 +85,13 @@ impl RDES {
     }
 
     /// Give ownership of this descriptor to the DMA by setting the OWN bit
-    pub fn give(&mut self) {
-        let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of RDES0
-        vv.update(|val| *val |= RDES0::OWN as u32); // Set the OWN bit
+    pub unsafe fn give(&mut self) {
+        // let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of RDES0
+        // vv.update(|val| *val |= RDES0::OWN as u32); // Set the OWN bit
+        let addr = &mut (self.v[0]) as *mut _;
+        let read: u32 = ptr::read_volatile(addr);
+        let modified = read | RDES0::OWN as u32;
+        ptr::write_volatile(addr, modified);
     }
 
     /// Get pointer to this RDES as u32
@@ -124,9 +130,9 @@ impl RDES {
     }
 
     /// Get an arbitrary field from RDES0
-    pub fn get_rdes0(&self, field: RDES0) -> u32 {
+    pub unsafe fn get_rdes0(&self, field: RDES0) -> u32 {
         use RDES0::*;
-        let v = Volatile::new(&(self.v[0])).read(); // Volatile read of RDES0
+        let v: u32 = ptr::read_volatile(&(self.v[0]) as *const _);
         let masked = v & (field as u32);
         match field {
             // Get the count of field length and align as u32

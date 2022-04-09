@@ -1,6 +1,8 @@
 //! TX buffer descriptor field definitions and volatile access
 
 use volatile::Volatile;
+use core::ptr;
+
 
 /// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
@@ -28,10 +30,10 @@ impl TXDL {
     /// Move the address of the current descriptor to the next one in the chain
     /// or loop back to the start if this is the last one
     pub unsafe fn next(&mut self) -> &mut TXDL {
-        let tdes: TDES = *self.tdesref;
-        if tdes.get_tdes0(TDES0::TCH) != 0 {
+        let tdes: TDES = self.tdesref.read_volatile();
+        if self.get_tdes0(TDES0::TCH) != 0 {
             // We are chaining to the next descriptor in the list
-            self.tdesref = (*self.tdesref).get_next_pointer() as *mut TDES;
+            self.tdesref = self.get_next_pointer() as *mut TDES;
         } else {
             // We are looping back to the start of the list
             self.tdesref = self.txdladdr;
@@ -39,13 +41,113 @@ impl TXDL {
         self
     }
 
-    /// Dereference the current descriptor
+    /// Volatile read of the current descriptor
     pub unsafe fn get(&self) -> TDES {
-        *self.tdesref
+        self.tdesref.read_volatile()
+    }
+
+    /// Check if software owns this descriptor
+    pub unsafe fn is_owned(&self) -> bool {
+        let v = self.tdesref.read_volatile().v[0];
+        if v & TDES0::OWN as u32 != 0 {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /// Give ownership of this descriptor to the DMA by setting the OWN bit
+    pub unsafe fn give(&mut self) {
+        let mut tdes = self.tdesref.read_volatile();
+        tdes.v[0] |= TDES0::OWN as u32;
+        self.tdesref.write_volatile(tdes);
+    }
+
+    /// Set the pointer to the next descriptor in the ring
+    pub unsafe fn set_next_pointer(&mut self, ptr: u32) {
+        let mut tdes = self.tdesref.read_volatile();  // Volatile read via copy
+        tdes.v[3] = ptr;
+        self.tdesref.write_volatile(tdes);
+    }
+
+    /// Set the pointer to the buffer segment associated with this
+    pub unsafe fn set_buffer_pointer(&mut self, ptr: u32) {
+        let mut tdes = self.tdesref.read_volatile();  // Volatile read via copy
+        tdes.v[2] = ptr;
+        self.tdesref.write_volatile(tdes);
+    }
+
+    /// Get the raw pointer to the next descriptor in the ring
+    pub unsafe fn get_next_pointer(&self) -> u32 {
+        self.tdesref.read_volatile().v[3]
+    }
+
+    /// Get the raw pointer to the buffer segment associated with this
+    pub unsafe fn get_buffer_pointer(&self) -> u32 {
+        self.tdesref.read_volatile().v[2]
+    }
+
+    /// Set number of bytes to send from this buffer, in bytes, truncated to 12 bits.
+    /// Clears existing value.
+    pub unsafe fn set_buffer_size(&mut self, n: u16) {
+        let mut tdes = self.tdesref.read_volatile();
+        tdes.v[1] &= !(TDES1::TBS1 as u32);
+        let m = (n & 0b0000_1111_1111_1111) as u32; // Truncate to 12 bits and expand to u32
+        tdes.v[1] |= m;
+        self.tdesref.write_volatile(tdes);
+    }
+
+    /// Set a flag field in TDES0 by OR-ing in the new value via volatile read-modify-write.
+    /// Does not check if an overlapping value is already set!
+    pub unsafe fn set_tdes0(&mut self, field: TDES0) {
+        let mut tdes = self.tdesref.read_volatile();
+        tdes.v[0] |= field as u32;
+        self.tdesref.write_volatile(tdes);
+    }
+
+    /// Set a flag field in TDES1 by OR-ing in the new value via volatile read-modify-write.
+    /// Does not check if an overlapping value is already set!
+    pub unsafe fn set_tdes1(&mut self, field: TDES1) {
+        let mut tdes = self.tdesref.read_volatile();
+        tdes.v[1] |= field as u32;
+        self.tdesref.write_volatile(tdes);
+    }
+
+    /// Get an arbitrary field from TDES0
+    pub unsafe fn get_tdes0(&self, field: TDES0) -> u32 {
+        use TDES0::*;
+        let v = self.tdesref.read_volatile().v[0]; // Volatile read of TDES0
+        let masked = v & (field as u32);
+        match field {
+            // Handle numeric values
+            CC => masked >> 3,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1,
+            },
+        }
+    }
+
+    /// Get an arbitrary field from TDES1
+    pub unsafe fn get_tdes1(&self, field: TDES1) -> u32 {
+        use TDES1::*;
+        let v = self.tdesref.read_volatile().v[1]; // Volatile read of TDES1
+        let masked = v & (field as u32);
+        match field {
+            // Handle numeric values
+            TBS1 => masked,
+            TBS2 => masked >> 16,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1,
+            },
+        }
     }
 }
 
-/// TX buffer descriptor field definitions.
+/// TX buffer descriptor layout.
 ///
 /// "Descriptor" structure is the software interface with the direct memory access controller.
 /// Hardware interprets Descriptors as members of a linked list with a particular format.
@@ -64,119 +166,6 @@ impl TXDL {
 pub struct TDES {
     /// Content
     pub v: [u32; 8],
-}
-
-impl TDES {
-    /// New blank descriptor
-    pub fn new() -> TDES {
-        TDES { v: [0_u32; 8] }
-    }
-
-    /// Check if software owns this descriptor
-    pub fn is_owned(&self) -> bool {
-        let vv = Volatile::new(&(self.v[0]));
-        if vv.read() & TDES0::OWN as u32 != 0 {
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    /// Give ownership of this descriptor to the DMA by setting the OWN bit
-    pub fn give(&mut self) {
-        let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of TDES0
-        vv.update(|val| *val |= TDES0::OWN as u32); // Set the OWN bit
-    }
-
-    /// Get collision count encountered during send
-    pub fn get_cc(&self) -> u8 {
-        let vv = Volatile::new(&(self.v[0]));
-        ((vv.read() & TDES0::CC as u32) >> 3) as u8
-    }
-
-    /// Get pointer to this TDES as u32
-    pub fn get_pointer(&self) -> u32 {
-        (self as *const _) as u32
-    }
-
-    /// Set the pointer to the next descriptor in the ring
-    pub fn set_next_pointer(&mut self, ptr: u32) {
-        self.v[3] = ptr;
-    }
-
-    /// Set the pointer to the buffer segment associated with this
-    pub fn set_buffer_pointer(&mut self, ptr: u32) {
-        self.v[2] = ptr;
-    }
-
-    /// Get the raw pointer to the next descriptor in the ring
-    pub fn get_next_pointer(&self) -> u32 {
-        let vv = Volatile::new(&(self.v[3]));
-        vv.read()
-    }
-
-    /// Get the raw pointer to the buffer segment associated with this
-    pub fn get_buffer_pointer(&self) -> u32 {
-        let vv = Volatile::new(&(self.v[2]));
-        vv.read()
-    }
-
-    /// Set number of bytes to send from this buffer, in bytes, truncated to 12 bits.
-    /// Clears existing value.
-    pub fn set_buffer_size(&mut self, n: u16) {
-        let mut vv = Volatile::new(&mut (self.v[1])); // Volatile representation of TDES1
-        vv.update(|val| *val &= !(TDES1::TBS1 as u32)); // Clear field via read-modify-write
-
-        let m = (n & 0b0000_1111_1111_1111) as u32; // Truncate to 12 bits and expand to u32
-        vv.update(|val| *val |= m); // Set new value via read-modify-write
-    }
-
-    /// Set a flag field in TDES0 by OR-ing in the new value via volatile read-modify-write.
-    /// Does not check if an overlapping value is already set!
-    pub fn set_tdes0(&mut self, field: TDES0) {
-        let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of TDES0
-        vv.update(|val| *val |= field as u32); // Volatile read-modify-write
-    }
-
-    /// Set a flag field in TDES1 by OR-ing in the new value via volatile read-modify-write.
-    /// Does not check if an overlapping value is already set!
-    pub fn set_tdes1(&mut self, field: TDES1) {
-        let mut vv = Volatile::new(&mut (self.v[1])); // Volatile representation of TDES1
-        vv.update(|val| *val |= field as u32); // Volatile read-modify-write
-    }
-
-    /// Get an arbitrary field from TDES0
-    pub fn get_tdes0(&self, field: TDES0) -> u32 {
-        use TDES0::*;
-        let v = Volatile::new(&(self.v[0])).read(); // Volatile read of TDES0
-        let masked = v & (field as u32);
-        match field {
-            // Handle numeric values
-            CC => masked >> 3,
-            // Handle all flag fields as integer representation of bool
-            _ => match masked {
-                0 => 0,
-                _ => 1,
-            },
-        }
-    }
-
-    /// Get an arbitrary field from TDES1
-    pub fn get_tdes1(&self, field: TDES1) -> u32 {
-        use TDES1::*;
-        let v = Volatile::new(&(self.v[1])).read(); // Volatile read of TDES1
-        let masked = v & (field as u32);
-        match field {
-            // Handle numeric values
-            TBS1 => masked,
-            TBS2 => masked >> 16,
-            // Handle all flag fields as integer representation of bool
-            _ => match masked {
-                0 => 0,
-                _ => 1,
-            },
-        }
-    }
 }
 
 /// TX descriptor field masks for the first word (TDES0)

@@ -73,14 +73,13 @@ pub fn stellaris_main(mut board: board::Board) {
 
             // Debugging
             unsafe {
-                let descr = board.enet.txdl.get();
-                writeln!(uart, "Current TX Descriptor Word 0: {}", descr.v[0]).unwrap_or_default();
-                writeln!(uart, "Current TX Descriptor Owned: {}", descr.is_owned())
+                writeln!(uart, "Current TX Descriptor Word 0: {}", board.enet.txdl.get().v[0]).unwrap_or_default();
+                writeln!(uart, "Current TX Descriptor Owned: {}", board.enet.txdl.is_owned())
                     .unwrap_or_default();
                 writeln!(
                     uart,
                     "Current TX Descriptor Address: {}",
-                    descr.get_pointer()
+                    board.enet.txdl.tdesref as u32
                 )
                 .unwrap_or_default();
 
@@ -117,19 +116,19 @@ pub fn stellaris_main(mut board: board::Board) {
                 //     descr.get_tdes0(TDES0::TCH)
                 // )
                 // .unwrap_or_default();
-
+                let txdl = &(board.enet.txdl);
                 writeln!(uart, "Current TX Descriptor Errors\nES: {}\nIHE: {}\nJT: {}\nFF: {}\nIPE: {}\nLOC: {}\nNC: {}\nLC: {}\nEC: {}\nED: {}\nUF: {}\n", 
-                descr.get_tdes0(TDES0::ES),
-                descr.get_tdes0(TDES0::IHE),
-                descr.get_tdes0(TDES0::JT),
-                descr.get_tdes0(TDES0::FF), 
-                descr.get_tdes0(TDES0::IPE), 
-                descr.get_tdes0(TDES0::LOC), 
-                descr.get_tdes0(TDES0::NC), 
-                descr.get_tdes0(TDES0::LC), 
-                descr.get_tdes0(TDES0::EC), 
-                descr.get_tdes0(TDES0::ED), 
-                descr.get_tdes0(TDES0::UF)).unwrap_or_default();
+                txdl.get_tdes0(TDES0::ES),
+                txdl.get_tdes0(TDES0::IHE),
+                txdl.get_tdes0(TDES0::JT),
+                txdl.get_tdes0(TDES0::FF), 
+                txdl.get_tdes0(TDES0::IPE), 
+                txdl.get_tdes0(TDES0::LOC), 
+                txdl.get_tdes0(TDES0::NC), 
+                txdl.get_tdes0(TDES0::LC), 
+                txdl.get_tdes0(TDES0::EC), 
+                txdl.get_tdes0(TDES0::ED), 
+                txdl.get_tdes0(TDES0::UF)).unwrap_or_default();
             }
             // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
             // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();

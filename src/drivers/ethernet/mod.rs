@@ -349,7 +349,7 @@ impl EthernetDriver {
         self.stop();
 
         // Set descriptor list pointers
-
+        self.emac.txdladdr.write(|w| unsafe{w.bits(self.txdl.txdladdr as u32)});
 
         // Start DMA and EMAC transmit/receive
         self.start();

@@ -1,6 +1,6 @@
 //! TX buffer descriptor field definitions and volatile access
 
-use core::{fmt, ptr};
+use core::fmt;
 
 /// TX Descriptor List ring buffer
 #[repr(C, align(4))]

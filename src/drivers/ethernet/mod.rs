@@ -123,7 +123,7 @@ impl EthernetDriver {
         G: Fn(&PowerControl) -> EmacR,
     {
         // Get raw pointers to the first descriptors in each ring
-        let txdladdr: *mut TDES = emac.txdladdr.read().bits() as *mut TDES;
+        // let txdladdr: *mut TDES = emac.txdladdr.read().bits() as *mut TDES;
         let rxdladdr: *mut RDES = emac.rxdladdr.read().bits() as *mut RDES;
 
         // Build driver struct & initialize descriptor lists from SRAM
@@ -147,7 +147,7 @@ impl EthernetDriver {
             dst_ipaddr: dst_ipaddr,
             dst_port: dst_port,
 
-            txdl: TXDL::new(txdladdr),
+            txdl: TXDL::new(),
             rxdl: RXDL::new(rxdladdr),
         };
         // Write registers and populate buffers
@@ -343,11 +343,36 @@ impl EthernetDriver {
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
 
-        // Stop DMA transmit/receive
+        // Initialize descriptor lists and buffers
+
+        // Make sure DMA and EMAC are stopped in order to set new descriptor list pointers
+        self.stop();
+
+        // Set descriptor list pointers
+
+
+        // Start DMA and EMAC transmit/receive
+        self.start();
+    }
+
+    /// Stop transmit and receive DMA then EMAC
+    pub fn stop(&mut self) {
+        // DMA transmit/receive
+        self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
+        self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
+
+        // EMAC transmit/receive
+        self.emac.cfg.modify(|_, w| w.te().clear_bit());
+        self.emac.cfg.modify(|_, w| w.re().clear_bit());
+    }
+
+    /// Start transmit and receive DMA then EMAC
+    pub fn start(&mut self) {
+        // DMA transmit/receive
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
 
-        // Stop EMAC transmit/receive
+        // EMAC transmit/receive
         self.emac.cfg.modify(|_, w| w.te().set_bit());
         self.emac.cfg.modify(|_, w| w.re().set_bit());
     }

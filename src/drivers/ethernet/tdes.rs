@@ -1,29 +1,51 @@
 //! TX buffer descriptor field definitions and volatile access
 
-use core::fmt;
+use core::{fmt, ptr};
 
-
-/// TX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
-///
-/// We don't know where the descriptors are, so we have to chase the buffer around
-/// and hope for the best
+/// TX Descriptor List ring buffer
 #[repr(C, align(4))]
 pub struct TXDL {
     /// Address of start of descriptor list
     pub txdladdr: *mut TDES,
     /// Address of current descriptor
     pub tdesref: *mut TDES,
+    /// Descriptor data
+    pub descriptors: [TDES; 4],
+    /// Buffers sized for non-jumbo frames
+    pub buffers: [[u8; 1500]; 4],
 }
 
 impl TXDL {
     /// Initialize with the current descriptor pointed at the start of the list.
     ///
     /// The configuration of each descriptor must be updated by the driver.
-    pub fn new(txdladdr: *mut TDES) -> TXDL {
-        TXDL {
-            txdladdr: txdladdr,
-            tdesref: txdladdr,
+    pub fn new() -> TXDL {
+        let mut txdl = TXDL {
+            txdladdr: 0 as *mut TDES,
+            tdesref: 0 as *mut TDES,
+            descriptors: [TDES { v: [0_u32; 8] }; 4],
+            buffers: [[0_u8; 1500]; 4],
+        };
+        // Set pointers
+        txdl.txdladdr = &mut (txdl.descriptors[0]) as *mut TDES;
+
+        // Populate each descriptor's pointers
+        unsafe {
+            for i in 0..4 {
+                txdl.tdesref = &mut (txdl.descriptors[i]) as *mut TDES;
+                let buffer_ptr = &mut (txdl.buffers[i]) as *mut [u8; 1500];
+                txdl.set_buffer_pointer(buffer_ptr as u32);
+                if i < 3 {
+                    txdl.set_next_pointer(&(txdl.descriptors[i + 1]) as *const TDES as u32)
+                }
+                else {
+                    txdl.set_next_pointer(txdl.txdladdr as u32)
+                }
+            }
         }
+
+        txdl.tdesref = txdl.txdladdr;
+        txdl
     }
 
     /// Move the address of the current descriptor to the next one in the chain
@@ -63,14 +85,14 @@ impl TXDL {
 
     /// Set the pointer to the next descriptor in the ring
     pub unsafe fn set_next_pointer(&mut self, ptr: u32) {
-        let mut tdes = self.tdesref.read_volatile();  // Volatile read via copy
+        let mut tdes = self.tdesref.read_volatile(); // Volatile read via copy
         tdes.v[3] = ptr;
         self.tdesref.write_volatile(tdes);
     }
 
     /// Set the pointer to the buffer segment associated with this
     pub unsafe fn set_buffer_pointer(&mut self, ptr: u32) {
-        let mut tdes = self.tdesref.read_volatile();  // Volatile read via copy
+        let mut tdes = self.tdesref.read_volatile(); // Volatile read via copy
         tdes.v[2] = ptr;
         self.tdesref.write_volatile(tdes);
     }
@@ -148,8 +170,10 @@ impl TXDL {
 impl fmt::Debug for TXDL {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // f.debug_struct("TX Descriptor List").field("\nStart Address", &self.txdladdr).finish()
-        unsafe{
-            write!(f, "
+        unsafe {
+            write!(
+                f,
+                "
             TX Descriptor List
             ------------------
             Root Descriptor Address: {}
@@ -194,46 +218,45 @@ impl fmt::Debug for TXDL {
                 SaiInsert: {}
                 SaiReplace: {}
                 ",
-            self.txdladdr as usize,
-            self.tdesref as usize,
-            self.get_tdes0(TDES0::OWN),
-            self.get_tdes0(TDES0::ES),
-            self.get_tdes0(TDES0::IHE),
-            self.get_tdes0(TDES0::JT),
-            self.get_tdes0(TDES0::FF), 
-            self.get_tdes0(TDES0::IPE), 
-            self.get_tdes0(TDES0::LOC), 
-            self.get_tdes0(TDES0::NC), 
-            self.get_tdes0(TDES0::LC), 
-            self.get_tdes0(TDES0::EC), 
-            self.get_tdes0(TDES0::ED), 
-            self.get_tdes0(TDES0::UF),
-            self.get_tdes0(TDES0::CC),
-        
-            self.get_next_pointer(),
-            self.get_buffer_pointer(),
-            self.get_tdes1(TDES1::TBS1),
-            self.get_tdes1(TDES1::TBS2),
-            self.get_tdes0(TDES0::IC),
-            self.get_tdes0(TDES0::LS),
-            self.get_tdes0(TDES0::FS),
-            self.get_tdes0(TDES0::DC),
-            self.get_tdes0(TDES0::DP),
-            self.get_tdes0(TDES0::TTSE),
-            self.get_tdes0(TDES0::CRCR),
-            self.get_tdes0(TDES0::CicIPV4),
-            self.get_tdes0(TDES0::CicFrameOnly),
-            self.get_tdes0(TDES0::CicFull),
-            self.get_tdes0(TDES0::TER),
-            self.get_tdes0(TDES0::TCH),
-            self.get_tdes0(TDES0::VlanRemove),
-            self.get_tdes0(TDES0::VlanInsert),
-            self.get_tdes0(TDES0::VlanReplace),
-            self.get_tdes0(TDES0::TTSS),
-            self.get_tdes1(TDES1::SA1),
-            self.get_tdes1(TDES1::SaiInsert),
-            self.get_tdes1(TDES1::SaiReplace),
-        )
+                self.txdladdr as usize,
+                self.tdesref as usize,
+                self.get_tdes0(TDES0::OWN),
+                self.get_tdes0(TDES0::ES),
+                self.get_tdes0(TDES0::IHE),
+                self.get_tdes0(TDES0::JT),
+                self.get_tdes0(TDES0::FF),
+                self.get_tdes0(TDES0::IPE),
+                self.get_tdes0(TDES0::LOC),
+                self.get_tdes0(TDES0::NC),
+                self.get_tdes0(TDES0::LC),
+                self.get_tdes0(TDES0::EC),
+                self.get_tdes0(TDES0::ED),
+                self.get_tdes0(TDES0::UF),
+                self.get_tdes0(TDES0::CC),
+                self.get_next_pointer(),
+                self.get_buffer_pointer(),
+                self.get_tdes1(TDES1::TBS1),
+                self.get_tdes1(TDES1::TBS2),
+                self.get_tdes0(TDES0::IC),
+                self.get_tdes0(TDES0::LS),
+                self.get_tdes0(TDES0::FS),
+                self.get_tdes0(TDES0::DC),
+                self.get_tdes0(TDES0::DP),
+                self.get_tdes0(TDES0::TTSE),
+                self.get_tdes0(TDES0::CRCR),
+                self.get_tdes0(TDES0::CicIPV4),
+                self.get_tdes0(TDES0::CicFrameOnly),
+                self.get_tdes0(TDES0::CicFull),
+                self.get_tdes0(TDES0::TER),
+                self.get_tdes0(TDES0::TCH),
+                self.get_tdes0(TDES0::VlanRemove),
+                self.get_tdes0(TDES0::VlanInsert),
+                self.get_tdes0(TDES0::VlanReplace),
+                self.get_tdes0(TDES0::TTSS),
+                self.get_tdes1(TDES1::SA1),
+                self.get_tdes1(TDES1::SaiInsert),
+                self.get_tdes1(TDES1::SaiReplace),
+            )
         }
     }
 }

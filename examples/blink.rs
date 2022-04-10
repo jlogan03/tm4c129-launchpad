@@ -72,26 +72,18 @@ pub fn stellaris_main(mut board: board::Board) {
             .unwrap_or_default();
 
             // Debugging
-            unsafe {
-                // writeln!(uart, "Current TX Descriptor Word 0: {}", board.enet.txdl.get().v[0]).unwrap_or_default();
-                // writeln!(uart, "Current TX Descriptor Owned: {}", board.enet.txdl.is_owned()).unwrap_or_default();
-                writeln!(uart,"Root TX Descriptor Address: {}", board.enet.emac.txdladdr.read().bits()).unwrap_or_default();
+            let txdl = &mut (board.enet.txdl);
+            writeln!(uart, "{:?}", txdl).unwrap_or_default();
+            writeln!(uart, "{}", (&board.enet as *const _) as u32).unwrap_or_default();
 
-                // match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
-                //     Ok(num_attempts) => {
-                //         writeln!(uart, "Number of UDP transmit attempts: {}", num_attempts)
-                //             .unwrap_or_default()
-                //     }
-                //     _ => (),
-                // };
-
-                let txdl = &(board.enet.txdl);
-                writeln!(uart, "Descriptor List Status: {:?}", txdl).unwrap_or_default();
-            }
-            // writeln!(uart, "TX Descriptor 0 Word 1: {}", board.emac.tx_descriptors[0].v[1]).unwrap_or_default();
-            // writeln!(uart, "TX Descriptor 0 Word 2: {}", board.emac.tx_descriptors[0].v[2]).unwrap_or_default();
-            // writeln!(uart, "TX Descriptor 0 Word 3: {}", board.emac.tx_descriptors[0].v[3]).unwrap_or_default();
-            // writeln!(uart, "RX Descriptor 0 Word 2: {}", board.emac.rx_descriptors[0].v[2]).unwrap_or_default();
+            // writeln!(uart, "RX descriptor list root address: {}", &board.enet.emac.rxdladdr.read().bits()).unwrap_or_default();
+            // match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
+            //     Ok(num_attempts) => {
+            //         writeln!(uart, "Number of UDP transmit attempts: {}", num_attempts)
+            //             .unwrap_or_default()
+            //     }
+            //     _ => (),
+            // };
         }
         loops = loops + 1;
 

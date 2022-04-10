@@ -343,11 +343,11 @@ impl EthernetDriver {
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
 
-        // Start DMA transmit/receive
+        // Stop DMA transmit/receive
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
 
-        // Start EMAC transmit/receive
+        // Stop EMAC transmit/receive
         self.emac.cfg.modify(|_, w| w.te().set_bit());
         self.emac.cfg.modify(|_, w| w.re().set_bit());
     }
@@ -369,7 +369,7 @@ impl EthernetDriver {
                 //    Set common settings
                 self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
                 self.txdl.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
-                self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+                // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
                 self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
 
                 self.txdl.give(); // Give this descriptor & buffer back to the DMA

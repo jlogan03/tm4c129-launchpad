@@ -28,7 +28,7 @@ export PATH="$PATH:/Applications/ARM/bin/"
 ### lm4tools
 lm4tools provides a serial interface to the Stellaris bootloader on the launchpad board.
 
-Clone https://github.com/utzig/lm4tools and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
+Clone https://github.com/uastw-embsys/lm4tools (or one of the 40+ other forks of lm4tools) and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
 
 
 ## Compile and flash

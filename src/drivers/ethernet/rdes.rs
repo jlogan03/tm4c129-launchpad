@@ -1,8 +1,5 @@
 //! RX buffer descriptor field definitions and volatile access
 
-use volatile::Volatile;
-use core::ptr;
-
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
@@ -30,10 +27,9 @@ impl RXDL {
     /// Move the address of the current descriptor to the next one in the chain
     /// or loop back to the start if this is the last one
     pub unsafe fn next(&mut self) -> &mut RXDL {
-        let rdes: RDES = *self.rdesref;
-        if rdes.get_rdes1(RDES1::RCH) != 0 {
+        if self.get_rdes1(RDES1::RCH) != 0 {
             // We are chaining to the next descriptor in the list
-            self.rdesref = (*self.rdesref).get_next_pointer() as *mut RDES;
+            self.rdesref = self.get_next_pointer() as *mut RDES;
         } else {
             // We are looping back to the start of the list
             self.rdesref = self.rxdladdr;
@@ -44,6 +40,124 @@ impl RXDL {
     /// Dereference the current descriptor
     pub unsafe fn get(&self) -> RDES {
         *self.rdesref
+    }
+
+    /// Check if software owns this descriptor
+    pub unsafe fn is_owned(&self) -> bool {
+        let v = self.rdesref.read_volatile().v[0];
+        if v & RDES0::OWN as u32 != 0 {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /// Give ownership of this descriptor to the DMA by setting the OWN bit
+    pub unsafe fn give(&mut self) {
+        self.set_rdes0(RDES0::OWN)
+    }
+
+    /// Set the pointer to the next descriptor in the ring
+    pub unsafe fn set_next_pointer(&mut self, ptr: u32) {
+        let mut rdes = self.rdesref.read_volatile();
+        rdes.v[3] = ptr;
+        self.rdesref.write_volatile(rdes);
+    }
+
+    /// Set the pointer to the buffer segment associated with this
+    pub unsafe fn set_buffer_pointer(&mut self, ptr: u32) {
+        let mut rdes = self.rdesref.read_volatile();
+        rdes.v[2] = ptr;
+        self.rdesref.write_volatile(rdes);
+    }
+
+    /// Get the pointer to the next descriptor in the ring
+    pub unsafe fn get_next_pointer(&mut self) -> u32 {
+        self.rdesref.read_volatile().v[3]
+    }
+
+    /// Get the pointer to the buffer segment
+    pub unsafe fn get_buffer_pointer(&self) -> u32 {
+        self.rdesref.read_volatile().v[2]
+    }
+
+    /// Get number of bytes to receive from this buffer
+    pub unsafe fn get_buffer_size(&self) -> u16 {
+        self.get_rdes1(RDES1::RBS1) as u16
+    }
+
+    /// Get an arbitrary field from RDES0
+    pub unsafe fn get_rdes0(&self, field: RDES0) -> u32 {
+        use RDES0::*;
+        let rdes = self.rdesref.read_volatile();
+        let masked = rdes.v[0] & (field as u32);
+        match field {
+            // Get the count of field length and align as u32
+            FL => masked >> 16,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1,
+            },
+        }
+    }
+
+    /// Set an arbitrary field in RDES1
+    pub unsafe fn set_rdes0(&mut self, field: RDES0) {
+        use RDES0::*;
+        let mut rdes = self.rdesref.read_volatile();
+    
+        match field {
+            // Handle numeric values
+            FL => {}  // Frame length only set by DMA
+            // Handle all flag fields
+            _ => rdes.v[0] |= field as u32,
+        }
+        // Write the modified descriptor
+        self.rdesref.write_volatile(rdes);
+    }
+
+    /// Get an arbitrary field from RDES1
+    pub unsafe fn get_rdes1(&self, field: RDES1) -> u32 {
+        use RDES1::*;
+        let rdes = self.rdesref.read_volatile();
+        let masked = rdes.v[1] & (field as u32);
+        match field {
+            // Handle numeric values
+            RBS2 => masked >> 16,
+            RBS1 => masked,
+            // Handle all flag fields as integer representation of bool
+            _ => match masked {
+                0 => 0,
+                _ => 1,
+            },
+        }
+    }
+
+    /// Set an arbitrary field in RDES1
+    pub unsafe fn set_rdes1(&mut self, field: RDES1, value: Option<u16>) {
+        use RDES1::*;
+        let mut rdes = self.rdesref.read_volatile();
+        let x: u16 = match value {
+            Some(x) => x,
+            None => 0_u16,
+        };
+        let masked = (x & (0b0000_1111_1111_1111 as u16)) as u32;
+        match field {
+            // Handle numeric values
+            RBS1 => {
+                rdes.v[1] &= !(RBS1 as u32); // Clear field
+                rdes.v[1] |= masked; // Set new value
+            }
+            RBS2 => {
+                rdes.v[1] &= !(RBS2 as u32); // Clear field via read-modify-write
+                rdes.v[1] |= masked << 16; // Set new value
+            }
+            // Handle all flag fields
+            _ => rdes.v[1] |= field as u32,
+        }
+        // Write the modified descriptor
+        self.rdesref.write_volatile(rdes);
     }
 }
 
@@ -72,118 +186,6 @@ impl RDES {
     /// New blank descriptor
     pub fn new() -> RDES {
         RDES { v: [0_u32; 8] }
-    }
-
-    /// Check if software owns this descriptor
-    pub fn is_owned(&self) -> bool {
-        let vv = Volatile::new(&(self.v[0]));
-        if vv.read() & RDES0::OWN as u32 != 0 {
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    /// Give ownership of this descriptor to the DMA by setting the OWN bit
-    pub unsafe fn give(&mut self) {
-        // let mut vv = Volatile::new(&mut (self.v[0])); // Volatile representation of RDES0
-        // vv.update(|val| *val |= RDES0::OWN as u32); // Set the OWN bit
-        let addr = &mut (self.v[0]) as *mut _;
-        let read: u32 = ptr::read_volatile(addr);
-        let modified = read | RDES0::OWN as u32;
-        ptr::write_volatile(addr, modified);
-    }
-
-    /// Get pointer to this RDES as u32
-    pub fn get_pointer(&self) -> u32 {
-        (self as *const _) as u32
-    }
-
-    /// Set the pointer to the next descriptor in the ring
-    pub fn set_next_pointer(&mut self, ptr: u32) {
-        let mut vv = Volatile::new(&mut (self.v[3]));
-        vv.write(ptr);
-    }
-
-    /// Set the pointer to the buffer segment associated with this
-    pub fn set_buffer_pointer(&mut self, ptr: u32) {
-        let mut vv = Volatile::new(&mut (self.v[2]));
-        vv.write(ptr);
-    }
-
-    /// Get the pointer to the next descriptor in the ring
-    pub fn get_next_pointer(&mut self) -> u32 {
-        let vv = Volatile::new(&(self.v[3]));
-        vv.read()
-    }
-
-    /// Get the pointer to the buffer segment
-    pub fn get_buffer_pointer(&self) -> u32 {
-        let vv = Volatile::new(&(self.v[2]));
-        vv.read()
-    }
-
-    /// Get number of bytes to receive from this buffer, in bytes.
-    pub fn get_buffer_size(&self) -> u16 {
-        let v = Volatile::new(&(self.v[1])).read(); // Volatile read of RDES1
-        (v | (RDES1::RBS1 as u32)) as u16
-    }
-
-    /// Get an arbitrary field from RDES0
-    pub unsafe fn get_rdes0(&self, field: RDES0) -> u32 {
-        use RDES0::*;
-        let v: u32 = ptr::read_volatile(&(self.v[0]) as *const _);
-        let masked = v & (field as u32);
-        match field {
-            // Get the count of field length and align as u32
-            FL => masked >> 16,
-            // Handle all flag fields as integer representation of bool
-            _ => match masked {
-                0 => 0,
-                _ => 1,
-            },
-        }
-    }
-
-    /// Get an arbitrary field from RDES1
-    pub fn get_rdes1(&self, field: RDES1) -> u32 {
-        use RDES1::*;
-        let v = Volatile::new(&(self.v[1])).read(); // Volatile read of RDES1
-        let masked = v & (field as u32);
-        match field {
-            // Handle numeric values
-            RBS2 => masked >> 16,
-            RBS1 => masked,
-            // Handle all flag fields as integer representation of bool
-            _ => match masked {
-                0 => 0,
-                _ => 1,
-            },
-        }
-    }
-
-    /// Set an arbitrary field in RDES1
-    pub fn set_rdes1(&mut self, field: RDES1, value: Option<u16>) {
-        use RDES1::*;
-        let mut v = Volatile::new(&mut (self.v[1])); // Volatile reference to RDES1
-        let x: u16 = match value {
-            Some(x) => x,
-            None => 0_u16,
-        };
-        let masked = (x & (0b0000_1111_1111_1111 as u16)) as u32;
-        match field {
-            // Handle numeric values
-            RBS1 => {
-                v.update(|val| *val &= !(RBS1 as u32)); // Clear field via read-modify-write
-                v.update(|val| *val |= masked); // Set new value
-            }
-            RBS2 => {
-                v.update(|val| *val &= !(RBS2 as u32)); // Clear field via read-modify-write
-                v.update(|val| *val |= masked << 16); // Set new value
-            }
-            // Handle all flag fields
-            _ => v.update(|val| *val |= field as u32),
-        }
     }
 }
 

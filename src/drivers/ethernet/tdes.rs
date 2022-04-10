@@ -194,8 +194,8 @@ impl fmt::Debug for TXDL {
                 SaiInsert: {}
                 SaiReplace: {}
                 ",
-            self.txdladdr as u32,
-            self.tdesref as u32,
+            self.txdladdr as usize,
+            self.tdesref as usize,
             self.get_tdes0(TDES0::OWN),
             self.get_tdes0(TDES0::ES),
             self.get_tdes0(TDES0::IHE),

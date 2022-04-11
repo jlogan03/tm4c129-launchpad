@@ -148,7 +148,7 @@ impl EthernetDriver {
             dst_port: dst_port,
 
             txdl: TXDL::new(),
-            rxdl: RXDL::new(rxdladdr),
+            rxdl: RXDL::new(),
         };
         // Write registers and populate buffers
         enet.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));

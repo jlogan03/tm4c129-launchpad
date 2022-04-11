@@ -75,6 +75,7 @@ pub fn stellaris_main(mut board: board::Board) {
             let txdl = &mut (board.enet.txdl);
             writeln!(uart, "{:?}", txdl).unwrap_or_default();
             unsafe{txdl.next();}
+            
             // writeln!(uart, "{}", (&board.enet as *const _) as u32).unwrap_or_default();
 
             // writeln!(uart, "RX descriptor list root address: {}", &board.enet.emac.rxdladdr.read().bits()).unwrap_or_default();

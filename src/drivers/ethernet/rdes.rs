@@ -1,5 +1,7 @@
 //! RX buffer descriptor field definitions and volatile access
 
+/// Number of descriptors/buffer segments
+const N: usize = 4;
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
@@ -11,17 +13,44 @@ pub struct RXDL {
     pub rxdladdr: *mut RDES,
     /// Address of current descriptor
     pub rdesref: *mut RDES,
+    /// Descriptor data
+    pub descriptors: [RDES; N],
+    /// Buffers sized for non-jumbo frames
+    pub buffers: [[u8; 1500]; N],
 }
 
 impl RXDL {
     /// Initialize with the current descriptor pointed at the start of the list.
     ///
     /// The configuration of each descriptor must be updated by the driver.
-    pub fn new(rxdladdr: *mut RDES) -> RXDL {
-        RXDL {
-            rxdladdr: rxdladdr,
-            rdesref: rxdladdr,
+    pub fn new() -> RXDL {
+        let mut rxdl = RXDL {
+            rxdladdr: 0 as *mut RDES,
+            rdesref: 0 as *mut RDES,
+            descriptors: [RDES { v: [0_u32; 8] }; N],
+            buffers: [[0_u8; 1500]; N],
+        };
+
+        unsafe {
+            for i in 0..N {
+                rxdl.rdesref = &mut (rxdl.descriptors[i]) as *mut RDES;
+                let buffer_ptr = &mut (rxdl.buffers[i]) as *mut [u8; 1500];
+                rxdl.set_buffer_pointer(buffer_ptr as u32);
+
+                if i < N - 1 {
+                    rxdl.set_next_pointer(&(rxdl.descriptors[i + 1]) as *const RDES as u32);
+                } else {
+                    // This is the end of the ring. Point back toward the start and set the end-of-ring flag
+                    rxdl.set_next_pointer(rxdl.rxdladdr as u32);
+                    rxdl.set_rdes1(RDES1::RER, None);
+                }
+
+                rxdl.set_rdes1(RDES1::RCH, None);
+            }
         }
+
+        rxdl.rdesref = rxdl.rxdladdr;
+        rxdl
     }
 
     /// Move the address of the current descriptor to the next one in the chain
@@ -106,10 +135,10 @@ impl RXDL {
     pub unsafe fn set_rdes0(&mut self, field: RDES0) {
         use RDES0::*;
         let mut rdes = self.rdesref.read_volatile();
-    
+
         match field {
             // Handle numeric values
-            FL => {}  // Frame length only set by DMA
+            FL => {} // Frame length only set by DMA
             // Handle all flag fields
             _ => rdes.v[0] |= field as u32,
         }

@@ -97,6 +97,14 @@ impl TXDL {
         self.tdesref.write_volatile(tdes);
     }
 
+    /// Take ownership of this descriptor back from the DMA by clearing the OWN bit
+    /// This may cause unusual behavior and should only be done as a last resort
+    pub unsafe fn take(&mut self) {
+        let mut tdes = self.tdesref.read_volatile();
+        tdes.v[0] |= !(TDES0::OWN as u32);
+        self.tdesref.write_volatile(tdes);
+    }
+
     /// Set the pointer to the next descriptor in the ring
     pub unsafe fn set_next_pointer(&mut self, ptr: u32) {
         let mut tdes = self.tdesref.read_volatile(); // Volatile read via copy

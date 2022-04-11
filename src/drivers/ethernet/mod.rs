@@ -343,8 +343,6 @@ impl EthernetDriver {
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
 
-        // Initialize descriptor lists and buffers
-
         // Make sure DMA and EMAC are stopped in order to set new descriptor list pointers
         self.stop();
 
@@ -383,6 +381,14 @@ impl EthernetDriver {
         for _ in 0..RXDESCRS {
             self.rxdl.give();
             self.rxdl.next();
+        }
+    }
+
+    /// Flush transmit descriptors
+    pub unsafe fn txflush(&mut self) {
+        for _ in 0..TXDESCRS {
+            self.txdl.take();
+            self.txdl.next();
         }
     }
 

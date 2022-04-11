@@ -8,6 +8,8 @@ use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
 
 use core::fmt::Write;
 
+// This function must be implemented by the application that uses the crate
+// and is the entry-point for that application after board initialization
 extern "Rust" {
     fn stellaris_main(board: board::Board);
 }

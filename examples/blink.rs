@@ -1,5 +1,4 @@
 //! A blinky-LED example application
-//! This example uses launchpad-rs.
 
 #![no_std]
 #![no_main]
@@ -19,11 +18,13 @@ use tm4c129x_hal::time::Bps;
 use catnip::{ip::IPV4Addr, MACAddr};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, tdes::TDES0},
+    drivers::ethernet::{socket::UDPSocket, tdes::TDES0, RXBUFSIZE},
 };
 
+use core::str;
+
 #[no_mangle]
-pub fn stellaris_main(mut board: board::Board) {
+pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut pins_a = board.GPIO_PORTA_AHB.split(&board.power_control);
     let mut uart = serial::Serial::uart0(
         board.UART0,
@@ -72,21 +73,29 @@ pub fn stellaris_main(mut board: board::Board) {
             .unwrap_or_default();
 
             // Debugging
+            // Test UDP transmit
+            match udp.transmit::<3>(&mut board.enet, *b"hello world!") {
+                Ok(num_attempts) => writeln!(uart, "UDP transmit started").unwrap_or_default(),
+                Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
+            };
             let txdl = &mut (board.enet.txdl);
             writeln!(uart, "{:?}", txdl).unwrap_or_default();
-            unsafe{txdl.next();}
-            
-            // writeln!(uart, "{}", (&board.enet as *const _) as u32).unwrap_or_default();
 
-            // writeln!(uart, "RX descriptor list root address: {}", &board.enet.emac.rxdladdr.read().bits()).unwrap_or_default();
-            // match udp.transmit::<3>(&mut board.enet, *b"hello world!", 100) {
-            //     Ok(num_attempts) => {
-            //         writeln!(uart, "Number of UDP transmit attempts: {}", num_attempts)
-            //             .unwrap_or_default()
-            //     }
-            //     _ => (),
-            // };
+            // Test ethernet receive (without UDP socket)
+            let mut buf = [0_u8; RXBUFSIZE];
+            unsafe {
+                match &board.enet.receive(&mut buf) {
+                    Ok(num_bytes) => {
+                        writeln!(uart, "Received {} ethernet bytes", num_bytes)
+                            .unwrap_or_default()
+                    }
+                    Err(x) => writeln!(uart, "Ethernet RX error: {:?}", x).unwrap_or_default(),
+                };
+            }
+            let rxdl = &mut (board.enet.rxdl);
+            writeln!(uart, "{:?}", rxdl).unwrap_or_default();
         }
+
         loops = loops + 1;
 
         if *(&(board.button0).is_low().unwrap_or_default()) {

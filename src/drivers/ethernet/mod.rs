@@ -10,7 +10,10 @@ use tm4c129x_hal::{
 };
 
 use self::rdes::*;
+pub use self::rdes::{RXBUFSIZE, RXDESCRS};
+
 use self::tdes::*;
+pub use self::tdes::{TXBUFSIZE, TXDESCRS};
 
 /// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EmacR;
@@ -122,11 +125,7 @@ impl EthernetDriver {
         F: Fn(&PowerControl) -> EphyR,
         G: Fn(&PowerControl) -> EmacR,
     {
-        // Get raw pointers to the first descriptors in each ring
-        // let txdladdr: *mut TDES = emac.txdladdr.read().bits() as *mut TDES;
-        let rxdladdr: *mut RDES = emac.rxdladdr.read().bits() as *mut RDES;
-
-        // Build driver struct & initialize descriptor lists from SRAM
+        // Build driver struct & initialize descriptor lists and buffers
         let mut enet: EthernetDriver = EthernetDriver {
             emac: emac,
             system_clk_freq: system_clk_freq,
@@ -150,6 +149,7 @@ impl EthernetDriver {
             txdl: TXDL::new(),
             rxdl: RXDL::new(),
         };
+
         // Write registers and populate buffers
         enet.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
 
@@ -350,8 +350,9 @@ impl EthernetDriver {
 
         // Set descriptor list pointers
         self.emac.txdladdr.write(|w| unsafe{w.bits(self.txdl.txdladdr as u32)});
+        self.emac.rxdladdr.write(|w| unsafe{w.bits(self.rxdl.rxdladdr as u32)});
 
-        // Start DMA and EMAC transmit/receive
+        // Start DMA and EMAC transmit/receive & incorporate new descriptor pointers
         self.start();
     }
 
@@ -377,18 +378,30 @@ impl EthernetDriver {
         self.emac.cfg.modify(|_, w| w.re().set_bit());
     }
 
-    /// Attempt to send an ethernet frame that has been reduced to bytes
+    /// Flush receive descriptors
+    pub unsafe fn rxflush(&mut self) {
+        for _ in 0..RXDESCRS {
+            self.rxdl.give();
+            self.rxdl.next();
+        }
+    }
+
+    /// Attempt to send an ethernet frame that has been reduced to (a multiple of 4) bytes
     pub unsafe fn transmit<const N: usize>(
         &mut self,
         data: [u8; N],
-        attempts: usize,
-    ) -> Result<usize, ()> {
-        for i in 0..attempts {
+    ) -> Result<(), EthernetError> {
+        // Check data length
+        if N > TXBUFSIZE {
+            return Err(EthernetError::BufferOverflow)
+        }
+        // Attempt send
+        for _ in 0..TXDESCRS{
             if self.txdl.is_owned() {
                 // We own the current descriptor; load our data into the buffer and tell the DMA to send it
                 //    Load data into buffer
-                let mut _buffer: [u8; N] = *(self.txdl.get_buffer_pointer() as *mut [u8; N]);
-                _buffer = data;
+                let mut _buffer: *mut [u8; N] = self.txdl.get_buffer_pointer() as *mut [u8; N];
+                _buffer.write_volatile(data);
                 //    Set buffer length
                 self.txdl.set_buffer_size(N as u16);
                 //    Set common settings
@@ -399,14 +412,62 @@ impl EthernetDriver {
 
                 self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
-                return Ok(i);
+                return Ok(());
             } else {
                 // We do not own the current descriptor and can't use it to send data
                 // Go to the next descriptor
                 self.txdl.next();
             }
         }
-        return Err(());
+        // We checked every descriptor and none of them are available
+        return Err(EthernetError::DescriptorUnavailable);
+    }
+
+    /// Receive a frame of unknown size that may be up to 1522 bytes
+    pub unsafe fn receive(
+        &mut self,
+        buf: &mut [u8; RXBUFSIZE],
+    ) -> Result<usize, EthernetError> {
+        // Walk through descriptor list until we find one that is the start of a received frame
+        // and is owned by software, or we have checked all the descriptors
+        let mut num_owned: usize = 0;
+        for _ in 0..RXDESCRS {
+            let owned = self.rxdl.is_owned();
+            num_owned += owned as usize;
+            if owned && (self.rxdl.get_rdes0(RDES0::FS) != 0) {
+                break
+            }
+            else {
+                self.rxdl.next();
+            }
+        }
+
+        // Did we actually find a frame to receive, or did we run out of descriptors?
+        if !(self.rxdl.is_owned() && (self.rxdl.get_rdes0(RDES0::FS) != 0)) {
+            // If all the descriptors are owned by software and yet there is no frame to receive, something
+            // has gone wrong. Flush the buffer by returning all descriptors to the DMA.
+            if num_owned == RXDESCRS {
+                self.rxflush();
+            }
+            // Either way, there is no valid data to receive from the buffer
+            return Err(EthernetError::NothingToReceive);
+        }
+        else {
+            // There is a frame to receive
+            // We do not have jumbo frames enabled and are using store-and-forward, 
+            // so the entire frame should be stored in a single buffer.
+            // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
+            let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
+            buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE]));
+            // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
+            descr_buf.write_volatile([0_u8; RXBUFSIZE]);
+        }
+
+        // Give this descriptor back to the DMA
+        self.rxdl.give();
+
+        let bytes_received = self.rxdl.get_buffer_size();
+        Ok(bytes_received as usize)
     }
 }
 
@@ -484,6 +545,7 @@ pub enum BurstSizeDMA {
     _8,
     _16,
     _32,
+
     // Settings that do require 8x flag
     // The 8x flag must match both RX and TX burst size, which introduces complicated logic
     // that is difficult to implement without introducing panic branches or unexpected behavior
@@ -494,8 +556,14 @@ pub enum BurstSizeDMA {
     // _256,
 }
 
-///
+/// Ethernet driver errors
+#[derive(Debug)]
 pub enum EthernetError {
-    /// The current descriptor is owned by the DMA and can't be used to transmit or receive
-    DescriptorOwnedError,
+    /// Data too large for buffer
+    BufferOverflow,
+    /// No descriptor available for transmission
+    DescriptorUnavailable,
+    /// Nothing to receive from RX descriptor buffers
+    NothingToReceive
+
 }

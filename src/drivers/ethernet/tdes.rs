@@ -3,7 +3,10 @@
 use core::fmt;
 
 /// Number of descriptors/buffer segments
-const N: usize = 4;
+pub const TXDESCRS: usize = 4;
+
+/// Number of bytes per buffer segment
+pub const TXBUFSIZE: usize = 1522;  // Maximum size of standard frame
 
 /// TX Descriptor List ring buffer
 #[repr(C, align(4))]
@@ -13,9 +16,9 @@ pub struct TXDL {
     /// Address of current descriptor
     pub tdesref: *mut TDES,
     /// Descriptor data
-    pub descriptors: [TDES; N],
+    pub descriptors: [TDES; TXDESCRS],
     /// Buffers sized for non-jumbo frames
-    pub buffers: [[u8; 1500]; N],
+    pub buffers: [[u8; TXBUFSIZE]; TXDESCRS],
 }
 
 impl TXDL {
@@ -26,20 +29,20 @@ impl TXDL {
         let mut txdl = TXDL {
             txdladdr: 0 as *mut TDES,
             tdesref: 0 as *mut TDES,
-            descriptors: [TDES { v: [0_u32; 8] }; N],
-            buffers: [[0_u8; 1500]; N],
+            descriptors: [TDES { v: [0_u32; 8] }; TXDESCRS],
+            buffers: [[0_u8; TXBUFSIZE]; TXDESCRS],
         };
-        // Set pointers
+        // Set descriptor list start pointer
         txdl.txdladdr = &mut (txdl.descriptors[0]) as *mut TDES;
 
         // Configure descriptors
         unsafe {
-            for i in 0..N {
+            for i in 0..TXDESCRS {
                 // Populate pointers
                 txdl.tdesref = &mut (txdl.descriptors[i]) as *mut TDES;
-                let buffer_ptr = &mut (txdl.buffers[i]) as *mut [u8; 1500];
+                let buffer_ptr = &mut (txdl.buffers[i]) as *mut [u8; TXBUFSIZE];
                 txdl.set_buffer_pointer(buffer_ptr as u32);
-                if i < N - 1 {
+                if i < TXDESCRS - 1 {
                     txdl.set_next_pointer(&(txdl.descriptors[i + 1]) as *const TDES as u32);
                 }
                 else {

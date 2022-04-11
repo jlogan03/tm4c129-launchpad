@@ -1,7 +1,12 @@
 //! RX buffer descriptor field definitions and volatile access
 
+use core::fmt;
+
 /// Number of descriptors/buffer segments
-const N: usize = 4;
+pub const RXDESCRS: usize = 4;
+
+/// Number of bytes per buffer segment
+pub const RXBUFSIZE: usize = 1522;  // Maximum size of standard frame
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
@@ -14,9 +19,9 @@ pub struct RXDL {
     /// Address of current descriptor
     pub rdesref: *mut RDES,
     /// Descriptor data
-    pub descriptors: [RDES; N],
+    pub descriptors: [RDES; RXDESCRS],
     /// Buffers sized for non-jumbo frames
-    pub buffers: [[u8; 1500]; N],
+    pub buffers: [[u8; RXBUFSIZE]; RXDESCRS],
 }
 
 impl RXDL {
@@ -27,17 +32,19 @@ impl RXDL {
         let mut rxdl = RXDL {
             rxdladdr: 0 as *mut RDES,
             rdesref: 0 as *mut RDES,
-            descriptors: [RDES { v: [0_u32; 8] }; N],
-            buffers: [[0_u8; 1500]; N],
+            descriptors: [RDES { v: [0_u32; 8] }; RXDESCRS],
+            buffers: [[0_u8; RXBUFSIZE]; RXDESCRS],
         };
+        // Set descriptor list start pointer
+        rxdl.rxdladdr = &mut (rxdl.descriptors[0]) as *mut RDES;
 
         unsafe {
-            for i in 0..N {
+            for i in 0..RXDESCRS {
                 rxdl.rdesref = &mut (rxdl.descriptors[i]) as *mut RDES;
-                let buffer_ptr = &mut (rxdl.buffers[i]) as *mut [u8; 1500];
+                let buffer_ptr = &mut (rxdl.buffers[i]) as *mut [u8; RXBUFSIZE];
                 rxdl.set_buffer_pointer(buffer_ptr as u32);
 
-                if i < N - 1 {
+                if i < RXDESCRS - 1 {
                     rxdl.set_next_pointer(&(rxdl.descriptors[i + 1]) as *const RDES as u32);
                 } else {
                     // This is the end of the ring. Point back toward the start and set the end-of-ring flag
@@ -103,7 +110,7 @@ impl RXDL {
     }
 
     /// Get the pointer to the next descriptor in the ring
-    pub unsafe fn get_next_pointer(&mut self) -> u32 {
+    pub unsafe fn get_next_pointer(&self) -> u32 {
         self.rdesref.read_volatile().v[3]
     }
 
@@ -189,6 +196,82 @@ impl RXDL {
         }
         // Write the modified descriptor
         self.rdesref.write_volatile(rdes);
+    }
+}
+
+impl fmt::Debug for RXDL {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // f.debug_struct("TX Descriptor List").field("\nStart Address", &self.txdladdr).finish()
+        unsafe {
+            write!(
+                f,
+                "
+            RX Descriptor List
+            ------------------
+            Root Descriptor Address: {}
+            Current Descriptor Address: {}
+            Current Descriptor
+              Owned by DMA: {}
+              Error Status
+                ES: {}
+                AFM: {}
+                DE: {}
+                SAF: {}
+                LE: {}
+                OE: {}
+                LC: {}
+                RWT: {}
+                RE: {}
+                DBE: {}
+                CE: {}
+              Configuration
+                Next Descriptor Address: {}
+                Buffer Address: {}
+                Buffer 1 Size: {}
+                Buffer 2 Size: {}
+                FL: {}
+                VLAN: {}
+                FS: {}
+                LS: {}
+                TA: {}
+                FT: {}
+                ESA: {}
+                DI: {}
+                RER: {}
+                RCH: {}
+                ",
+                self.rxdladdr as usize,
+                self.rdesref as usize,
+                self.get_rdes0(RDES0::OWN),
+                // Errors
+                self.get_rdes0(RDES0::ES),
+                self.get_rdes0(RDES0::AFM),
+                self.get_rdes0(RDES0::DE),
+                self.get_rdes0(RDES0::SAF),
+                self.get_rdes0(RDES0::LE),
+                self.get_rdes0(RDES0::OE),
+                self.get_rdes0(RDES0::LC),
+                self.get_rdes0(RDES0::RWT),
+                self.get_rdes0(RDES0::RE),
+                self.get_rdes0(RDES0::DBE),
+                self.get_rdes0(RDES0::CE),
+                // Cfg
+                self.get_next_pointer(),
+                self.get_buffer_pointer(),
+                self.get_rdes1(RDES1::RBS1),
+                self.get_rdes1(RDES1::RBS2),
+                self.get_rdes0(RDES0::FL),
+                self.get_rdes0(RDES0::VLAN),
+                self.get_rdes0(RDES0::FS),
+                self.get_rdes0(RDES0::LS),
+                self.get_rdes0(RDES0::TA),
+                self.get_rdes0(RDES0::FT),
+                self.get_rdes0(RDES0::ESA),
+                self.get_rdes1(RDES1::DI),
+                self.get_rdes1(RDES1::RER),
+                self.get_rdes1(RDES1::RCH),
+            )
+        }
     }
 }
 

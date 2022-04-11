@@ -5,9 +5,9 @@ use catnip::ip::{IPV4Addr, IPV4Header, DSCP};
 use catnip::udp::{UDPHeader, UDPPacket};
 use catnip::{Data, MACAddr};
 
-use super::EthernetDriver;
+use super::{EthernetDriver, EthernetError};
 
-/// Thin adapter layer to generate UDP packets without constantly passing the address info in
+/// Thin adapter layer to generate UDP packets without constantly passing the address info around
 pub struct UDPSocket {
     /// Source MAC address
     pub src_macaddr: MACAddr,
@@ -28,9 +28,8 @@ impl UDPSocket {
     pub fn transmit<const M: usize>(
         &self,
         enet: &mut EthernetDriver,
-        data: [u8; 4 * M],
-        attempts: usize,
-    ) -> Result<usize, ()>
+        data: [u8; 4 * M]
+    ) -> Result<(), EthernetError>
     where
         [u8; 4 * M]:,
         [u8; 4 * 0]:,
@@ -50,7 +49,7 @@ impl UDPSocket {
         )
         .to_be_bytes();
 
-        unsafe { enet.transmit(frame, attempts) }
+        unsafe { enet.transmit(frame) }
     }
 }
 
@@ -78,14 +77,13 @@ where
         .finalize();
     let udpheader: UDPHeader = UDPHeader::new(src_port, dst_port);
     let udppacket: UDPPacket<0, M> = UDPPacket {
-        // N words of data and no Options
+        // M words of data and 0 words of Options
         ip_header: ipheader,
         udp_header: udpheader,
         udp_data: data,
     }; // Populates packet length fields for both IP and UDP headers
     let enetheader: EthernetHeader = EthernetHeader::new(src_macaddr, dst_macaddr, EtherType::IPV4);
     let enetframe: EthernetFrameUDP<0, M> = EthernetFrameUDP::new(enetheader, udppacket);
-    // let enetpacket = EthernetPacketUDP::new(enetframe);
 
     return enetframe;
 }

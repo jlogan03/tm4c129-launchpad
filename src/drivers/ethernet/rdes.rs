@@ -44,12 +44,14 @@ impl RXDL {
                     rxdl.set_next_pointer(rxdl.rxdladdr as u32);
                     rxdl.set_rdes1(RDES1::RER, None);
                 }
-
+                // Indicate descriptors are chained
                 rxdl.set_rdes1(RDES1::RCH, None);
+                // Disable interrupt-on-completion
+                rxdl.set_rdes1(RDES1::DI, None);
             }
         }
 
-        rxdl.rdesref = rxdl.rxdladdr;
+        rxdl.rdesref = rxdl.rxdladdr;  // Reset current descriptor to the start of the ring
         rxdl
     }
 

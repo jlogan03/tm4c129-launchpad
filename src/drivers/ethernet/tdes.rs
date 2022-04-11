@@ -55,7 +55,7 @@ impl TXDL {
             }
         }
 
-        txdl.tdesref = txdl.txdladdr;
+        txdl.tdesref = txdl.txdladdr;  // Reset current descriptor to the start of the ring
         txdl
     }
 

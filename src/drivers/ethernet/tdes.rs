@@ -29,18 +29,26 @@ impl TXDL {
         // Set pointers
         txdl.txdladdr = &mut (txdl.descriptors[0]) as *mut TDES;
 
-        // Populate each descriptor's pointers
+        // Configure descriptors
         unsafe {
             for i in 0..4 {
+                // Populate pointers
                 txdl.tdesref = &mut (txdl.descriptors[i]) as *mut TDES;
                 let buffer_ptr = &mut (txdl.buffers[i]) as *mut [u8; 1500];
                 txdl.set_buffer_pointer(buffer_ptr as u32);
                 if i < 3 {
-                    txdl.set_next_pointer(&(txdl.descriptors[i + 1]) as *const TDES as u32)
+                    txdl.set_next_pointer(&(txdl.descriptors[i + 1]) as *const TDES as u32);
                 }
                 else {
-                    txdl.set_next_pointer(txdl.txdladdr as u32)
+                    // This is the end of the ring. Point back toward the start and set the end-of-ring flag
+                    txdl.set_next_pointer(txdl.txdladdr as u32);
+                    txdl.set_tdes0(TDES0::TER);
                 }
+                // Indicate descriptors are chained
+                txdl.set_tdes0(TDES0::TCH);
+                // We are not using multi-buffer frames; set both start of frame and end of frame flags
+                txdl.set_tdes0(TDES0::FS);
+                txdl.set_tdes0(TDES0::LS);
             }
         }
 

@@ -1,9 +1,9 @@
 //! Build a UDP/IP Ethernet packet and get its representation as network bytes
 
 use catnip::enet::{EtherType, EthernetFrameUDP, EthernetHeader};
-use catnip::ip::{IPV4Addr, IPV4Header, DSCP};
+use catnip::ip::{IPV4Header, DSCP};
 use catnip::udp::{UDPHeader, UDPPacket};
-use catnip::{Data, MACAddr};
+use catnip::{Data, MACAddr, IPV4Addr};
 
 use super::{EthernetDriver, EthernetError};
 
@@ -70,11 +70,11 @@ where
     [u8; 4 * 0 + 20 + 4 * M + 8]:,
     [u8; (4 * 0 + 20) + (4 * M) + 14 + 8]:,
 {
-    let ipheader: IPV4Header<0> = IPV4Header::new() // IP header with no Options segment
-        .src_ipaddr(src_ipaddr)
+    let mut ipheader: IPV4Header<0> = IPV4Header::new(); // IP header with no Options segment
+    ipheader.src_ipaddr(src_ipaddr)
         .dst_ipaddr(dst_ipaddr)
-        .dscp(DSCP::Realtime)
-        .finalize();
+        .ttl(100)
+        .dscp(DSCP::Realtime);
     let udpheader: UDPHeader = UDPHeader::new(src_port, dst_port);
     let udppacket: UDPPacket<0, M> = UDPPacket {
         // M words of data and 0 words of Options

@@ -464,7 +464,7 @@ impl EthernetDriver {
             // so the entire frame should be stored in a single buffer.
             // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
             let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
-            buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE]));
+            buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE]));  // Slice to guarantee length does not exceed buffer size
             // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
             descr_buf.write_volatile([0_u8; RXBUFSIZE]);
         }

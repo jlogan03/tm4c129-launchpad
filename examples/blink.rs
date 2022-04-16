@@ -15,7 +15,7 @@ use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
 
-use catnip::{ip::IPV4Addr, MACAddr};
+use catnip::{IPV4Addr, MACAddr};
 use tm4c129_launchpad::{
     board,
     drivers::ethernet::{socket::UDPSocket, tdes::TDES0, RXBUFSIZE},

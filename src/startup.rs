@@ -35,7 +35,7 @@ unsafe fn call_main() -> ! {
 /// other exception mechanism. HardFaults have a fixed priority of -1, meaning
 /// they have higher priority than any exception with configurable priority.
 #[exception]
-unsafe fn HardFault(_: &ExceptionFrame) -> ! {
+unsafe fn HardFault(_sf: &ExceptionFrame) -> ! {
     // Need ITM support for this to work
     // iprintln!("EXCEPTION {:?} @ PC=0x{:08x}", Exception::active(), sf.pc);
 
@@ -56,7 +56,7 @@ unsafe fn HardFault(_: &ExceptionFrame) -> ! {
 
     // Debug formatter can panic, so this can't be run with panic_never
     #[cfg(debug_assertions)]
-    writeln!(uart, "SF: {:?}", sf).unwrap_or_default();
+    writeln!(uart, "SF: {:?}", _sf).unwrap_or_default();
 
     board::safe();
 }

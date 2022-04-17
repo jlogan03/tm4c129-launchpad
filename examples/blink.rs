@@ -21,8 +21,6 @@ use tm4c129_launchpad::{
     drivers::ethernet::{socket::UDPSocket, RXBUFSIZE},
 };
 
-use core::str;
-
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut pins_a = board.GPIO_PORTA_AHB.split(&board.power_control);
@@ -75,7 +73,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             // Debugging
             // Test UDP transmit
             match udp.transmit::<3>(&mut board.enet, *b"hello world!") {
-                Ok(num_attempts) => writeln!(uart, "UDP transmit started").unwrap_or_default(),
+                Ok(_) => writeln!(uart, "UDP transmit started").unwrap_or_default(),
                 Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
             };
             let txdl = &mut (board.enet.txdl);

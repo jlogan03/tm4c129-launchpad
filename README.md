@@ -8,7 +8,7 @@ An example program for the TM4C129-XL Launchpad board, based on the [stellaris-l
 * arm-none-eabi-* (ARM Embedded Toolchain for compiler)
 * libusb-1.0.0-0-dev (for lm4tools)
 * lm4tools (serial interface to Launchpad bootloader)
-* Ubuntu: TI drivers for the in-circuit debugger (to connect to the board's UART via USB)
+* TI drivers for the in-circuit debugger (to connect to the board's UART via USB)
 
 The process described here works (with some offroading) on Linux and Mac, but has not been tested on Windows.
 

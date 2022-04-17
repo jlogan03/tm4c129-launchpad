@@ -44,7 +44,7 @@ sudo apt install libusb-1.0.0-0-dev
 Clone https://github.com/uastw-embsys/lm4tools (or one of the 40+ other forks of lm4tools) and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
 
 ### TI Drivers
-Follow the instructions at https://software-dl.ti.com/ccs/esd/documents/ccs_linux_host_support.html to install the latest version of the USB drivers.
+Follow the instructions at https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html to install the latest version of the USB drivers.
 
 
 ## Compile and flash

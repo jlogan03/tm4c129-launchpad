@@ -5,6 +5,7 @@ An example program for the TM4C129-XL Launchpad board, based on the [stellaris-l
 ## Requirements
 
 * arm-none-eabi-* (ARM Embedded Toolchain for compiler)
+* libusb (for lm4tools)
 * lm4tools (serial interface to Launchpad bootloader)
 
 The process described here works on Linux and Mac, but has not been tested on Windows.
@@ -27,6 +28,16 @@ export PATH="$PATH:/Applications/ARM/bin/"
 
 ### lm4tools
 lm4tools provides a serial interface to the Stellaris bootloader on the launchpad board.
+
+First, get libusb.
+```bash
+# Mac
+brew install libusb
+```
+```bash
+# Ubuntu (note the generic libusb-dev package is broken! must install specific version)
+sudo apt install libusb-1.0.0-0-dev
+```
 
 Clone https://github.com/uastw-embsys/lm4tools (or one of the 40+ other forks of lm4tools) and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
 

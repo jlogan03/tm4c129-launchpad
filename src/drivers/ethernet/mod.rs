@@ -347,25 +347,28 @@ impl EthernetDriver {
         self.stop();
 
         // Set descriptor list pointers
-        self.emac.txdladdr.write(|w| unsafe{w.bits(self.txdl.txdladdr as u32)});
-        self.emac.rxdladdr.write(|w| unsafe{w.bits(self.rxdl.rxdladdr as u32)});
+        self.emac.txdladdr.write(|w| unsafe{w.bits(self.txdl.txdladdr as u32)});  // List start address
+        self.emac.rxdladdr.write(|w| unsafe{w.bits(self.rxdl.rxdladdr as u32)});  // List start address
 
         // Start DMA and EMAC transmit/receive & incorporate new descriptor pointers
         self.start();
+
+        // Clear any interrupts that might be active
+        self.emac.dmaris.reset();
     }
 
-    /// Stop transmit and receive DMA then EMAC
+    /// Stop transmit and receive EMAC then DMA (order is important)
     pub fn stop(&mut self) {
-        // DMA transmit/receive
-        self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
-        self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
-
         // EMAC transmit/receive
         self.emac.cfg.modify(|_, w| w.te().clear_bit());
         self.emac.cfg.modify(|_, w| w.re().clear_bit());
+
+        // DMA transmit/receive
+        self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
+        self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
     }
 
-    /// Start transmit and receive DMA then EMAC
+    /// Start transmit and receive DMA then EMAC (order is important)
     pub fn start(&mut self) {
         // DMA transmit/receive
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
@@ -398,9 +401,10 @@ impl EthernetDriver {
         data: [u8; N],
     ) -> Result<(), EthernetError> {
         // Check data length
-        if N > TXBUFSIZE {
+        if N > TXBUFSIZE / 4 {
             return Err(EthernetError::BufferOverflow)
         }
+
         // Attempt send
         for _ in 0..TXDESCRS{
             if self.txdl.is_owned() {
@@ -417,6 +421,11 @@ impl EthernetDriver {
                 self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
 
                 self.txdl.give(); // Give this descriptor & buffer back to the DMA
+
+                // Make sure the transmitter is enabled
+                self.start();
+                // Tell the DMA that there is demand for transmission by writing any value to the register
+                self.emac.txpolld.write(|w| {w.tpd().bits(0)});
 
                 return Ok(());
             } else {
@@ -573,3 +582,22 @@ pub enum EthernetError {
     NothingToReceive
 
 }
+
+
+// impl fmt::Debug for EthernetDriver {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         // f.debug_struct("TX Descriptor List").field("\nStart Address", &self.txdladdr).finish()
+//         unsafe {
+//             write!(
+//                 f,
+//                 "
+//             Ethernet Controller
+//             ------------------
+//             Root Descriptor Address: {}
+//                 ",
+//                 self.txdladdr as usize,
+
+//             )
+//         }
+//     }
+// }

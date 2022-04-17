@@ -71,21 +71,13 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             .unwrap_or_default();
 
             // Debugging
-            // Test UDP transmit
-            match udp.transmit::<3>(&mut board.enet, *b"hello world!") {
-                Ok(_) => writeln!(uart, "UDP transmit started").unwrap_or_default(),
-                Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
-            };
-            let txdl = &mut (board.enet.txdl);
-            writeln!(uart, "{:?}", txdl).unwrap_or_default();
 
             // Test ethernet receive (without UDP socket)
             let mut buf = [0_u8; RXBUFSIZE];
             unsafe {
                 match &board.enet.receive(&mut buf) {
                     Ok(num_bytes) => {
-                        writeln!(uart, "Received {} ethernet bytes", num_bytes)
-                            .unwrap_or_default()
+                        writeln!(uart, "Received {} ethernet bytes", num_bytes).unwrap_or_default()
                     }
                     Err(x) => writeln!(uart, "Ethernet RX error: {:?}", x).unwrap_or_default(),
                 };
@@ -93,6 +85,38 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             let rxdl = &mut (board.enet.rxdl);
             writeln!(uart, "{:?}", rxdl).unwrap_or_default();
         }
+
+        // Test UDP transmit
+        match udp.transmit::<3>(&mut board.enet, *b"hello world!") {
+            Ok(_) => writeln!(uart, "UDP transmit started").unwrap_or_default(),
+            Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
+        };
+        let txdl = &mut (board.enet.txdl);
+        writeln!(uart, "{:?}", txdl).unwrap_or_default();
+
+        // Check EMAC status
+        let status = board.enet.emac.status.read().txpaused().bit_is_set();
+        writeln!(uart, "EMAC TX paused? {status}");
+        let status = board.enet.emac.hostxdesc.read().bits();
+        writeln!(uart, "EMAC TX descr addr {status}");
+        let status = board.enet.emac.hostxba.read().bits();
+        writeln!(uart, "EMAC TX buf addr {status}");
+        let status = board.enet.emac.txdladdr.read().bits();
+        writeln!(uart, "EMAC TXDL addr {status}");
+        let status = board.enet.emac.status.read().txfe().bit_is_set();
+        writeln!(uart, "EMAC TX FIFO not empty? {status}");
+        let status = board.enet.emac.status.read().twc().bit_is_set();
+        writeln!(uart, "EMAC TX FIFO write controller active? {status}");
+        let status = board.enet.emac.status.read().tpe().bit_is_set();
+        writeln!(uart, "EMAC MII transmit protocol engine status? {status}");
+        let status = board.enet.emac.status.read().tfc().variant();
+        writeln!(uart, "EMAC MII transmit frame controller status {status:?}");
+        let status = board.enet.emac.dmaris.read().ts().bits();
+        writeln!(uart, "EMAC DMA transmit process state {status:?}");
+        let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
+        writeln!(uart, "EMAC DMA bus error? {status:?}");
+        let status = board.enet.emac.dmaris.read().ae().bits();
+        writeln!(uart, "EMAC DMA access error type {status:?}");
 
         loops = loops + 1;
 

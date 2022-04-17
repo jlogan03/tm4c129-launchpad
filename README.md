@@ -56,7 +56,7 @@ The on-board bootloader acts as a UART-to-USB bridge for UART0. This connection 
 screen /dev/tty.something 115200
 ```
 
-On Ubuntu,```bash ls -l /dev/serial/by-id``` will show which device is associated with which port.
+On Ubuntu,```ls -l /dev/serial/by-id``` will show which device is associated with which port.
 
 Figuring out which serial port it is can be tedious on a Mac. Just watch ```ls /dev/tty*``` while plugging/unplugging the board a few times.
 

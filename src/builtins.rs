@@ -1,5 +1,6 @@
 //! Functions required by rustc/LLVM
 
+#[cfg(debug_assertions)]
 use super::board;
 
 #[cfg(debug_assertions)]

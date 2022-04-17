@@ -8,6 +8,6 @@ cargo build --example blink --release
 # Convert binary
 arm-none-eabi-objcopy -O binary $INFILE $OUTFILE
 # Flash
-sudo lm4flash  $OUTFILE
+sudo $LM4FLASH $OUTFILE
 # Show binary size
 ls -lh $OUTFILE

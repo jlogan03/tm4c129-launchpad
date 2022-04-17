@@ -6,6 +6,7 @@ use cortex_m_rt::{entry, exception, ExceptionFrame};
 use super::board;
 use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
 
+#[cfg(debug_assertions)]
 use core::fmt::Write;
 
 // This function must be implemented by the application that uses the crate
@@ -34,7 +35,7 @@ unsafe fn call_main() -> ! {
 /// other exception mechanism. HardFaults have a fixed priority of -1, meaning
 /// they have higher priority than any exception with configurable priority.
 #[exception]
-unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
+unsafe fn HardFault(_: &ExceptionFrame) -> ! {
     // Need ITM support for this to work
     // iprintln!("EXCEPTION {:?} @ PC=0x{:08x}", Exception::active(), sf.pc);
 

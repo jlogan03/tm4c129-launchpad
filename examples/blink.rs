@@ -18,7 +18,7 @@ use tm4c129x_hal::time::Bps;
 use catnip::{IPV4Addr, MACAddr};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, tdes::TDES0, RXBUFSIZE},
+    drivers::ethernet::{socket::UDPSocket, RXBUFSIZE},
 };
 
 use core::str;

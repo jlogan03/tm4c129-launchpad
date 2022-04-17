@@ -4,11 +4,13 @@ An example program for the TM4C129-XL Launchpad board, based on the [stellaris-l
 
 ## Requirements
 
+* rustc components (for cross-compiling)
 * arm-none-eabi-* (ARM Embedded Toolchain for compiler)
-* libusb (for lm4tools)
+* libusb-1.0.0-0-dev (for lm4tools)
 * lm4tools (serial interface to Launchpad bootloader)
+* TI drivers for the in-circuit debugger (to connect to the board's UART via USB)
 
-The process described here works on Linux and Mac, but has not been tested on Windows.
+The process described here works (with some offroading) on Linux and Mac, but has not been tested on Windows.
 
 ## Setup
 
@@ -40,6 +42,9 @@ sudo apt install libusb-1.0.0-0-dev
 ```
 
 Clone https://github.com/uastw-embsys/lm4tools (or one of the 40+ other forks of lm4tools) and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
+
+### TI Drivers
+Follow the instructions at https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html to install the latest version of the USB drivers.
 
 
 ## Compile and flash

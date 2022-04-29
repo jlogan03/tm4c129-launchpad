@@ -6,7 +6,7 @@ An example program for the TM4C129-XL Launchpad board, based on the [stellaris-l
 
 * rustc components (for cross-compiling)
 * arm-none-eabi-* (ARM Embedded Toolchain for compiler)
-* libusb-1.0.0-0-dev (for lm4tools)
+* libusb-1.0-0-dev (for lm4tools)
 * lm4tools (serial interface to Launchpad bootloader)
 * TI drivers for the in-circuit debugger (to connect to the board's UART via USB)
 

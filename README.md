@@ -77,9 +77,5 @@ On Ubuntu,```ls -l /dev/serial/by-id``` will show which device is associated wit
 Figuring out which serial port it is can be tedious on a Mac. Just watch ```ls /dev/tty*``` while plugging/unplugging the board a few times.
 
 # Future Plans
-
-* Drivers for EMAC and EPI
-* UDP ethernet example
-* I2C example
 * Maybe-possibly hardware-out-of-the-loop testing using QEMU
-* Definitely hardware-in-the-loop testing using a self-hosted github-actions runner (probably a raspberry pi on a shelf in my apartment) with some kind of unlocking procedure to keep the board from being bricked during testing
+* Definitely hardware-in-the-loop testing using a self-hosted github-actions runner (probably a raspberry pi on a shelf in my apartment) with an unlocking procedure to keep the board from being bricked during testing

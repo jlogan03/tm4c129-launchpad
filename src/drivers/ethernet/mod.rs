@@ -21,6 +21,12 @@ pub(crate) struct EmacR;
 /// Empty type to guarantee that the ephy_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EphyR;
 
+/// PHY MII Interrupt Status 1
+const EPHYMISR1: u8 = 0x12;
+
+/// PHY MII Interrupt Status 2
+const EPHYMISR2: u8 = 0x13;
+
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     // Unpack address values from register structure
@@ -348,20 +354,24 @@ impl EthernetDriver {
         self.txstop();
 
         // Set descriptor list pointers
-        self.emac.txdladdr.write(|w| unsafe{w.bits(self.txdl.txdladdr as u32)});  // List start address
-        self.emac.rxdladdr.write(|w| unsafe{w.bits(self.rxdl.rxdladdr as u32)});  // List start address
+        self.emac
+            .txdladdr
+            .write(|w| unsafe { w.bits(self.txdl.txdladdr as u32) }); // List start address
+        self.emac
+            .rxdladdr
+            .write(|w| unsafe { w.bits(self.rxdl.rxdladdr as u32) }); // List start address
 
-        // Clear PHY interrupts by reading them
-
+        // Clear PHY and MAC interrupts
+        self.phyclear();
+        self.emacclear();
 
         // Start DMA and EMAC transmit/receive
         self.rxstart();
         self.txstart();
 
-
-        // Clear any interrupts that might be active
-        // self.emac.;  // This interrupt is cleared by setting the bit, not by clearing it
-
+        // Clear interrupts again
+        self.phyclear();
+        self.emacclear();
     }
 
     /// Stop transmit EMAC then DMA (order is important)
@@ -379,7 +389,7 @@ impl EthernetDriver {
     /// Start transmit DMA then EMAC (order is important)
     pub fn txstart(&mut self) {
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
-        self.emac.cfg.modify(|_, w| w.te().set_bit());;
+        self.emac.cfg.modify(|_, w| w.te().set_bit());
     }
 
     /// Start receive DMA then EMAC (order is important)
@@ -404,48 +414,101 @@ impl EthernetDriver {
         }
     }
 
-    // /// Read a register from the PHY via MII
-    // unsafe fn phyread(&mut self, phy_addr: u8, reg_addr: u8) -> Result<Ok(u16), Err(&str)> {
-        
-    // }
+    /// Read a register from the _internal_ PHY via MII.
+    ///
+    /// This is kept private as it can cause a permanent freeze if the MII link to the PHY
+    /// is busy, so it should only be used when the EMAC and DMA have been stopped.
+    ///
+    /// Requires that system clock frequency has already been set during init.
+    fn phyread(&mut self, reg_addr: u8) -> u16 {
+        // Wait for MII link to be idle
+        while self.emac.miiaddr.read().miib().bit_is_set() {}
+
+        // Construct EMAC MII read config from register address
+        // System clock ref freq has already been set
+        let phy_addr: u8 = 0; // Use internal PHY explicitly
+        unsafe {
+            self.emac.miiaddr.modify(|_, w| {
+                w.mii()
+                    .bits(reg_addr) // PHY register to read from
+                    .pla()
+                    .bits(phy_addr) // PHY to read that register from
+                    .miib()
+                    .set_bit() // Set MII Busy flag so that we can wait for it to be cleared
+            });
+        }
+
+        // Wait for MII link to go idle again (indicating read operation is complete)
+        while self.emac.miiaddr.read().miib().bit_is_set() {}
+
+        // Get data that was read from PHY
+        let mii_data: u16 = self.emac.miidata.read().data().bits();
+        return mii_data;
+    }
+
+    // Clear PHY interrupts by reading their status
+    fn phyclear(&mut self) {
+        self.phyread(EPHYMISR1);
+        self.phyread(EPHYMISR2);
+    }
+
+    // Clear EMAC interrupts by setting their bits
+    fn emacclear(&mut self) {
+        // These have to be done all-at-once, because the summary bits are sticky and will reset otherwise
+        self.emac.dmaris.modify(|_, w| w
+            .nis().set_bit()
+            .ais().set_bit()
+            .eri().set_bit()
+            .fbi().set_bit()
+            .eti().set_bit()
+            .rwt().set_bit()
+            .rps().set_bit()
+            .ru().set_bit()
+            .ri().set_bit()
+            .unf().set_bit()
+            .ovf().set_bit()
+            .tjt().set_bit()
+            .tu().set_bit()
+            .ti().set_bit()
+        );  // This interrupt is cleared by setting the bit, not by clearing it
+    }
 
     /// Attempt to send an ethernet frame that has been reduced to (a multiple of 4) bytes
-    pub unsafe fn transmit<const N: usize>(
-        &mut self,
-        data: [u8; N],
-    ) -> Result<(), EthernetError> {
+    pub fn transmit<const N: usize>(&mut self, data: [u8; N]) -> Result<(), EthernetError> {
         // Check data length
         if N > TXBUFSIZE / 4 {
-            return Err(EthernetError::BufferOverflow)
+            return Err(EthernetError::BufferOverflow);
         }
 
         // Attempt send
-        for _ in 0..TXDESCRS{
-            if self.txdl.is_owned() {
-                // We own the current descriptor; load our data into the buffer and tell the DMA to send it
-                //    Load data into buffer
-                let mut _buffer: *mut [u8; N] = self.txdl.get_buffer_pointer() as *mut [u8; N];
-                _buffer.write_volatile(data);
-                //    Set buffer length
-                self.txdl.set_buffer_size(N as u16);
-                //    Set common settings
-                self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-                self.txdl.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
-                // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
-                self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
-                self.txdl.give(); // Give this descriptor & buffer back to the DMA
+        unsafe {
+            for _ in 0..TXDESCRS {
+                if self.txdl.is_owned() {
+                    // We own the current descriptor; load our data into the buffer and tell the DMA to send it
+                    //    Load data into buffer
+                    let mut _buffer: *mut [u8; N] = self.txdl.get_buffer_pointer() as *mut [u8; N];
+                    _buffer.write_volatile(data);
+                    //    Set buffer length
+                    self.txdl.set_buffer_size(N as u16);
+                    //    Set common settings
+                    self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
+                    self.txdl.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+                                                         // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+                    self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
+                    self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
-                // Make sure the transmitter is enabled, since it may have been disabled by errors
-                self.txstart();
+                    // Make sure the transmitter is enabled, since it may have been disabled by errors
+                    self.txstart();
 
-                // Tell the DMA that there is demand for transmission by writing any value to the register
-                self.emac.txpolld.write(|w| {w.tpd().bits(0)});
+                    // Tell the DMA that there is demand for transmission by writing any value to the register
+                    self.emac.txpolld.write(|w| w.tpd().bits(0));
 
-                return Ok(());
-            } else {
-                // We do not own the current descriptor and can't use it to send data
-                // Go to the next descriptor
-                self.txdl.next();
+                    return Ok(());
+                } else {
+                    // We do not own the current descriptor and can't use it to send data
+                    // Go to the next descriptor
+                    self.txdl.next();
+                }
             }
         }
         // We checked every descriptor and none of them are available
@@ -453,50 +516,47 @@ impl EthernetDriver {
     }
 
     /// Receive a frame of unknown size that may be up to 1522 bytes
-    pub unsafe fn receive(
-        &mut self,
-        buf: &mut [u8; RXBUFSIZE],
-    ) -> Result<usize, EthernetError> {
-        // Walk through descriptor list until we find one that is the start of a received frame
-        // and is owned by software, or we have checked all the descriptors
-        let mut num_owned: usize = 0;
-        for _ in 0..RXDESCRS {
-            let owned = self.rxdl.is_owned();
-            num_owned += owned as usize;
-            if owned && (self.rxdl.get_rdes0(RDES0::FS) != 0) {
-                break
+    pub fn receive(&mut self, buf: &mut [u8; RXBUFSIZE]) -> Result<usize, EthernetError> {
+        unsafe {
+            // Walk through descriptor list until we find one that is the start of a received frame
+            // and is owned by software, or we have checked all the descriptors
+            let mut num_owned: usize = 0;
+            for _ in 0..RXDESCRS {
+                let owned = self.rxdl.is_owned();
+                num_owned += owned as usize;
+                if owned && (self.rxdl.get_rdes0(RDES0::FS) != 0) {
+                    break;
+                } else {
+                    self.rxdl.next();
+                }
             }
-            else {
-                self.rxdl.next();
+
+            // Did we actually find a frame to receive, or did we run out of descriptors?
+            if !(self.rxdl.is_owned() && (self.rxdl.get_rdes0(RDES0::FS) != 0)) {
+                // If all the descriptors are owned by software and yet there is no frame to receive, something
+                // has gone wrong. Flush the buffer by returning all descriptors to the DMA.
+                if num_owned == RXDESCRS {
+                    self.rxflush();
+                }
+                // Either way, there is no valid data to receive from the buffer
+                return Err(EthernetError::NothingToReceive);
+            } else {
+                // There is a frame to receive
+                // We do not have jumbo frames enabled and are using store-and-forward,
+                // so the entire frame should be stored in a single buffer.
+                // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
+                let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
+                buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE])); // Slice to guarantee length does not exceed buffer size
+                                                                                // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
+                descr_buf.write_volatile([0_u8; RXBUFSIZE]);
             }
-        }
 
-        // Did we actually find a frame to receive, or did we run out of descriptors?
-        if !(self.rxdl.is_owned() && (self.rxdl.get_rdes0(RDES0::FS) != 0)) {
-            // If all the descriptors are owned by software and yet there is no frame to receive, something
-            // has gone wrong. Flush the buffer by returning all descriptors to the DMA.
-            if num_owned == RXDESCRS {
-                self.rxflush();
-            }
-            // Either way, there is no valid data to receive from the buffer
-            return Err(EthernetError::NothingToReceive);
-        }
-        else {
-            // There is a frame to receive
-            // We do not have jumbo frames enabled and are using store-and-forward, 
-            // so the entire frame should be stored in a single buffer.
-            // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
-            let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
-            buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE]));  // Slice to guarantee length does not exceed buffer size
-            // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
-            descr_buf.write_volatile([0_u8; RXBUFSIZE]);
-        }
+            // Give this descriptor back to the DMA
+            self.rxdl.give();
 
-        // Give this descriptor back to the DMA
-        self.rxdl.give();
-
-        let bytes_received = self.rxdl.get_buffer_size();
-        Ok(bytes_received as usize)
+            let bytes_received = self.rxdl.get_buffer_size();
+            Ok(bytes_received as usize)
+        }
     }
 }
 
@@ -574,7 +634,6 @@ pub enum BurstSizeDMA {
     _8,
     _16,
     _32,
-
     // Settings that do require 8x flag
     // The 8x flag must match both RX and TX burst size, which introduces complicated logic
     // that is difficult to implement without introducing panic branches or unexpected behavior
@@ -593,10 +652,8 @@ pub enum EthernetError {
     /// No descriptor available for transmission
     DescriptorUnavailable,
     /// Nothing to receive from RX descriptor buffers
-    NothingToReceive
-
+    NothingToReceive,
 }
-
 
 // impl fmt::Debug for EthernetDriver {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

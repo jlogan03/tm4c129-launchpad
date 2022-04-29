@@ -344,38 +344,47 @@ impl EthernetDriver {
         }
 
         // Make sure DMA and EMAC are stopped in order to set new descriptor list pointers
-        self.stop();
+        self.rxstop();
+        self.txstop();
 
         // Set descriptor list pointers
         self.emac.txdladdr.write(|w| unsafe{w.bits(self.txdl.txdladdr as u32)});  // List start address
         self.emac.rxdladdr.write(|w| unsafe{w.bits(self.rxdl.rxdladdr as u32)});  // List start address
 
-        // Start DMA and EMAC transmit/receive & incorporate new descriptor pointers
-        self.start();
+        // Clear PHY interrupts by reading them
+
+
+        // Start DMA and EMAC transmit/receive
+        self.rxstart();
+        self.txstart();
+
 
         // Clear any interrupts that might be active
-        self.emac.dmaris.reset();
+        // self.emac.;  // This interrupt is cleared by setting the bit, not by clearing it
+
     }
 
-    /// Stop transmit and receive EMAC then DMA (order is important)
-    pub fn stop(&mut self) {
-        // EMAC transmit/receive
+    /// Stop transmit EMAC then DMA (order is important)
+    pub fn txstop(&mut self) {
         self.emac.cfg.modify(|_, w| w.te().clear_bit());
-        self.emac.cfg.modify(|_, w| w.re().clear_bit());
-
-        // DMA transmit/receive
         self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
+    }
+
+    /// Stop receive EMAC then DMA (order is important)
+    pub fn rxstop(&mut self) {
+        self.emac.cfg.modify(|_, w| w.re().clear_bit());
         self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
     }
 
-    /// Start transmit and receive DMA then EMAC (order is important)
-    pub fn start(&mut self) {
-        // DMA transmit/receive
+    /// Start transmit DMA then EMAC (order is important)
+    pub fn txstart(&mut self) {
         self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
-        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
+        self.emac.cfg.modify(|_, w| w.te().set_bit());;
+    }
 
-        // EMAC transmit/receive
-        self.emac.cfg.modify(|_, w| w.te().set_bit());
+    /// Start receive DMA then EMAC (order is important)
+    pub fn rxstart(&mut self) {
+        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
         self.emac.cfg.modify(|_, w| w.re().set_bit());
     }
 
@@ -394,6 +403,11 @@ impl EthernetDriver {
             self.txdl.next();
         }
     }
+
+    // /// Read a register from the PHY via MII
+    // unsafe fn phyread(&mut self, phy_addr: u8, reg_addr: u8) -> Result<Ok(u16), Err(&str)> {
+        
+    // }
 
     /// Attempt to send an ethernet frame that has been reduced to (a multiple of 4) bytes
     pub unsafe fn transmit<const N: usize>(
@@ -419,11 +433,11 @@ impl EthernetDriver {
                 self.txdl.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
                 // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
                 self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
-
                 self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
-                // Make sure the transmitter is enabled
-                self.start();
+                // Make sure the transmitter is enabled, since it may have been disabled by errors
+                self.txstart();
+
                 // Tell the DMA that there is demand for transmission by writing any value to the register
                 self.emac.txpolld.write(|w| {w.tpd().bits(0)});
 

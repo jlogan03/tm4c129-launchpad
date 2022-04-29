@@ -48,13 +48,13 @@ impl TXDL {
                 else {
                     // This is the end of the ring. Point back toward the start and set the end-of-ring flag
                     txdl.set_next_pointer(txdl.txdladdr as u32);
-                    txdl.set_tdes0(TDES0::TER);
+                    txdl.set_tdes0(TDES0::TER);  // End-of-ring
                 }
-                // Indicate descriptors are chained
-                txdl.set_tdes0(TDES0::TCH);
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);
-                txdl.set_tdes0(TDES0::LS);
+                // txdl.set_tdes0(TDES0::LS);
+
+                txdl.set_tdes0(TDES0::TCH);  // Next descriptor is chained
             }
         }
 

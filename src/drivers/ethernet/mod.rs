@@ -21,11 +21,14 @@ pub(crate) struct EmacR;
 /// Empty type to guarantee that the ephy_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EphyR;
 
-/// PHY MII Interrupt Status 1
+/// PHY MII Interrupt Status 1 address
 const EPHYMISR1: u8 = 0x12;
 
-/// PHY MII Interrupt Status 2
+/// PHY MII Interrupt Status 2 address
 const EPHYMISR2: u8 = 0x13;
+
+/// PHY Basic Mode Control address
+const EPHYBMCR: u8 = 0x0;
 
 /// Get preprogrammed MAC address from ROM
 pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
@@ -195,6 +198,10 @@ impl EthernetDriver {
         // -------------------- NON-LATCHING CONFIGURATION --------------------
         // This configuration is cleared on peripheral reset and takes effect more-or-less immediately during operation
 
+        // Make sure DMA and EMAC are stopped in order to allow configuration
+        self.rxstop();
+        self.txstop();
+
         // Assumptions
         self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
@@ -349,10 +356,6 @@ impl EthernetDriver {
             RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
         }
 
-        // Make sure DMA and EMAC are stopped in order to set new descriptor list pointers
-        self.rxstop();
-        self.txstop();
-
         // Set descriptor list pointers
         self.emac
             .txdladdr
@@ -372,6 +375,11 @@ impl EthernetDriver {
         // Clear interrupts again
         self.phyclear();
         self.emacclear();
+
+        // Start PHY autonegotiation
+        let anen_enable: u16 = 0x1000;
+        let anen_restart: u16 = 0x200;
+        self.phywrite(EPHYBMCR, anen_enable | anen_restart);
     }
 
     /// Stop transmit EMAC then DMA (order is important)
@@ -417,15 +425,14 @@ impl EthernetDriver {
     /// Read a register from the _internal_ PHY via MII.
     ///
     /// This is kept private as it can cause a permanent freeze if the MII link to the PHY
-    /// is busy, so it should only be used when the EMAC and DMA have been stopped.
+    /// is busy, so it should only be used during init.
     ///
     /// Requires that system clock frequency has already been set during init.
     fn phyread(&mut self, reg_addr: u8) -> u16 {
         // Wait for MII link to be idle
         while self.emac.miiaddr.read().miib().bit_is_set() {}
 
-        // Construct EMAC MII read config from register address
-        // System clock ref freq has already been set
+        // Tell the EMAC to read the register from the PHY
         let phy_addr: u8 = 0; // Use internal PHY explicitly
         unsafe {
             self.emac.miiaddr.modify(|_, w| {
@@ -446,6 +453,38 @@ impl EthernetDriver {
         return mii_data;
     }
 
+    /// Write a register on the _internal_ PHY via MII
+    ///
+    /// This is kept private as it can cause a permanent freeze if the MII link to the PHY
+    /// is busy, so it should only be used during init.
+    ///
+    /// Requires that system clock frequency has already been set during init.
+    fn phywrite(&mut self, reg_addr: u8, value: u16) {
+        // Wait for MII link to be idle
+        while self.emac.miiaddr.read().miib().bit_is_set() {}
+
+        unsafe {
+            // Set the data to send
+            self.emac.miidata.modify(|_, w| w.data().bits(value));
+
+            // Tell the EMAC to write the register on the PHY
+            let phy_addr: u8 = 0; // Use internal PHY explicitly
+            self.emac.miiaddr.modify(|_, w| {
+                w.mii()
+                    .bits(reg_addr) // PHY register to read from
+                    .pla()
+                    .bits(phy_addr) // PHY to read that register from
+                    .miiw()
+                    .set_bit() // This is a write operation
+                    .miib()
+                    .set_bit() // Set MII Busy flag so that we can wait for it to be cleared
+            });
+        }
+
+        // Wait for MII link to be idle again (indicating write operation is complete)
+        while self.emac.miiaddr.read().miib().bit_is_set() {}
+    }
+
     // Clear PHY interrupts by reading their status
     fn phyclear(&mut self) {
         self.phyread(EPHYMISR1);
@@ -455,22 +494,36 @@ impl EthernetDriver {
     // Clear EMAC interrupts by setting their bits
     fn emacclear(&mut self) {
         // These have to be done all-at-once, because the summary bits are sticky and will reset otherwise
-        self.emac.dmaris.modify(|_, w| w
-            .nis().set_bit()
-            .ais().set_bit()
-            .eri().set_bit()
-            .fbi().set_bit()
-            .eti().set_bit()
-            .rwt().set_bit()
-            .rps().set_bit()
-            .ru().set_bit()
-            .ri().set_bit()
-            .unf().set_bit()
-            .ovf().set_bit()
-            .tjt().set_bit()
-            .tu().set_bit()
-            .ti().set_bit()
-        );  // This interrupt is cleared by setting the bit, not by clearing it
+        self.emac.dmaris.modify(|_, w| {
+            w.nis()
+                .set_bit()
+                .ais()
+                .set_bit()
+                .eri()
+                .set_bit()
+                .fbi()
+                .set_bit()
+                .eti()
+                .set_bit()
+                .rwt()
+                .set_bit()
+                .rps()
+                .set_bit()
+                .ru()
+                .set_bit()
+                .ri()
+                .set_bit()
+                .unf()
+                .set_bit()
+                .ovf()
+                .set_bit()
+                .tjt()
+                .set_bit()
+                .tu()
+                .set_bit()
+                .ti()
+                .set_bit()
+        }); // This interrupt is cleared by setting the bit, not by clearing it
     }
 
     /// Attempt to send an ethernet frame that has been reduced to (a multiple of 4) bytes

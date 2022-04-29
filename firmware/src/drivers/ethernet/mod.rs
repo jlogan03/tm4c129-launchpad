@@ -108,10 +108,10 @@ impl EthernetDriver {
     // pub async fn receive(data: &mut [u8]) {}
 
     /// Build and initialize
-    pub(crate) fn new<F, G>(
+    pub(crate) fn new<F>(
         pc: &PowerControl,
         ephy_reset: F,
-        emac_reset: G,
+        // emac_reset: G,
         emac: EMAC0,
         system_clk_freq: PllOutputFrequency,
         src_macaddr: [u8; 6],
@@ -132,7 +132,7 @@ impl EthernetDriver {
     ) -> EthernetDriver
     where
         F: Fn(&PowerControl) -> EphyR,
-        G: Fn(&PowerControl) -> EmacR,
+        // G: Fn(&PowerControl) -> EmacR,
     {
         // Build driver struct & initialize descriptor lists and buffers
         let mut enet: EthernetDriver = EthernetDriver {
@@ -160,7 +160,7 @@ impl EthernetDriver {
         };
 
         // Write registers and populate buffers
-        enet.init(pc, |pc| ephy_reset(pc), |pc| emac_reset(pc));
+        enet.init(pc, |pc| ephy_reset(pc));
 
         enet
     }
@@ -172,10 +172,9 @@ impl EthernetDriver {
     /// 3. Apply non-latching configuration
     ///
     /// 4. Populate buffers
-    pub(crate) fn init<F, G>(&mut self, pc: &PowerControl, ephy_reset: F, emac_reset: G)
+    pub(crate) fn init<F>(&mut self, pc: &PowerControl, ephy_reset: F)
     where
         F: Fn(&PowerControl) -> EphyR,
-        G: Fn(&PowerControl) -> EmacR,
     {
         // -------------------- LATCHING CONFIGURATION ------------------------
         // Some of this configuration survives peripheral reset & takes effect after reset
@@ -185,7 +184,7 @@ impl EthernetDriver {
         self.txstop();
 
         // Reset PHY then MAC to clear configuration
-        emac_reset(pc);
+        self.emac_reset();
         ephy_reset(pc);
 
         // Assumptions
@@ -196,9 +195,9 @@ impl EthernetDriver {
         self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode
 
-        // Reset PHY then MAC to latch configuration
-        emac_reset(pc);
-        ephy_reset(pc);
+        // Reset MAC again to latch configuration
+        self.emac_reset();
+        // ephy_reset(pc);
 
         // -------------------- NON-LATCHING CONFIGURATION --------------------
         // This configuration is cleared on peripheral reset and takes effect more-or-less immediately during operation
@@ -529,6 +528,14 @@ impl EthernetDriver {
                 .ti()
                 .set_bit()
         }); // This interrupt is cleared by setting the bit, not by clearing it
+    }
+
+    /// Do a soft reset of the EMAC and DMA.
+    /// 
+    /// This may loop indefinitely if the EMAC fails to come out of reset.
+    pub fn emac_reset(&mut self) {
+        self.emac.dmabusmod.modify(|_, w| {w.swr().set_bit()});
+        while self.emac.dmabusmod.read().swr().bit_is_set() {};
     }
 
     /// Attempt to send an ethernet frame that has been reduced to (a multiple of 4) bytes

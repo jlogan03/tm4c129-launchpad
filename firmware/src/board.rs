@@ -259,8 +259,8 @@ impl Board {
         let enet: EthernetDriver =
             EthernetDriver::new(
                 &sysctl.power_control,
-                |pc| ephy_reset(pc),
-                |pc| emac_reset(pc),
+                |pc| ephy_reset_power(pc),
+                // |pc| emac_reset(pc),
                 peripherals.EMAC0,
                 system_clk_freq,
                 src_macaddr,
@@ -393,7 +393,7 @@ pub fn safe() -> ! {
 }
 
 /// Reset EMAC, then wait until it shows ready status
-fn emac_reset(power_control: &PowerControl) -> EmacR {
+fn emac_reset_power(power_control: &PowerControl) -> EmacR {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
     // Reset EMAC, then wait until SYSCTL sets ready status
@@ -407,7 +407,7 @@ fn emac_reset(power_control: &PowerControl) -> EmacR {
 }
 
 /// Reset EPHY, then wait until it shows ready status
-fn ephy_reset(power_control: &PowerControl) -> EphyR {
+fn ephy_reset_power(power_control: &PowerControl) -> EphyR {
     //   Get a handle to sysctl to check ready status
     let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
     //   Reset EPHY, then wait until SYSCTL sets ready status
@@ -423,7 +423,7 @@ fn ephy_reset(power_control: &PowerControl) -> EphyR {
 /// Power-on and reset EMAC then EPHY
 pub fn emac_enable(power_control: &PowerControl) {
     control_power(power_control, Domain::Emac0, RunMode::Run, PowerState::On);
-    emac_reset(power_control);
+    emac_reset_power(power_control);
     control_power(power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
-    ephy_reset(power_control);
+    ephy_reset_power(power_control);
 }

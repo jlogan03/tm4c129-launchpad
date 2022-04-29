@@ -114,6 +114,27 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         writeln!(uart, "EMAC MII transmit frame controller status {status:?}");
         let status = board.enet.emac.dmaris.read().ts().bits();
         writeln!(uart, "EMAC DMA transmit process state {status:?}");
+
+        let status = board.enet.emac.status.read().rrc().bits();
+        writeln!(uart, "EMAC RX FIFO controller state? {status:?}");
+        let status = board.enet.emac.hosrxdesc.read().bits();
+        writeln!(uart, "EMAC RX descr addr {status}");
+        let status = board.enet.emac.hosrxba.read().bits();
+        writeln!(uart, "EMAC RX buf addr {status}");
+        let status = board.enet.emac.rxdladdr.read().bits();
+        writeln!(uart, "EMAC RXDL addr {status}");
+        let status = board.enet.emac.status.read().rxf().bits();
+        writeln!(uart, "EMAC RX FIFO status? {status:?}");
+        let status = board.enet.emac.status.read().rwc().bit_is_set();
+        writeln!(uart, "EMAC RX FIFO write controller active? {status}");
+        let status = board.enet.emac.status.read().rpe().bit_is_set();
+        writeln!(uart, "EMAC MII receive protocol engine status? {status}");
+        let status = board.enet.emac.status.read().rfcfc().bits();
+        writeln!(uart, "EMAC MII receive frame controller status {status:?}");
+        let status = board.enet.emac.dmaris.read().rs().bits();
+        writeln!(uart, "EMAC DMA receive process state {status:?}");
+
+
         let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
         writeln!(uart, "EMAC DMA bus error? {status:?}");
         let status = board.enet.emac.dmaris.read().ae().bits();

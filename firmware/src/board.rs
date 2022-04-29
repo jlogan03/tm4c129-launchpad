@@ -421,7 +421,7 @@ fn ephy_reset(power_control: &PowerControl) -> EphyR {
 }
 
 /// Power-on and reset EMAC then EPHY
-fn emac_enable(power_control: &PowerControl) {
+pub fn emac_enable(power_control: &PowerControl) {
     control_power(power_control, Domain::Emac0, RunMode::Run, PowerState::On);
     emac_reset(power_control);
     control_power(power_control, Domain::Ephy0, RunMode::Run, PowerState::On);

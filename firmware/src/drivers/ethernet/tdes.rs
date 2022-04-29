@@ -298,7 +298,7 @@ impl fmt::Debug for TXDL {
 ///
 /// See datasheet Figure 23-3 for layout.
 #[derive(Clone, Copy)]
-#[repr(C, align(4))]
+#[repr(transparent)]
 pub struct TDES {
     /// Content
     pub v: [u32; 8],

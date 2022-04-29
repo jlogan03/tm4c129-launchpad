@@ -75,6 +75,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         // Debugging
 
         // Test ethernet receive (without UDP socket)
+        
         let mut buf = [0_u8; RXBUFSIZE];
         unsafe {
             match &board.enet.receive(&mut buf) {
@@ -139,6 +140,8 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         writeln!(uart, "EMAC DMA bus error? {status:?}");
         let status = board.enet.emac.dmaris.read().ae().bits();
         writeln!(uart, "EMAC DMA access error type {status:?}");
+
+        board.enet.emacclear(); // Clear clearable interrupts
 
         loops = loops + 1;
 

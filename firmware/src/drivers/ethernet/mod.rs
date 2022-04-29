@@ -180,20 +180,25 @@ impl EthernetDriver {
         // -------------------- LATCHING CONFIGURATION ------------------------
         // Some of this configuration survives peripheral reset & takes effect after reset
 
+        // Make sure DMA and EMAC are stopped in order to allow configuration
+        self.rxstop();
+        self.txstop();
+
         // Reset PHY then MAC to clear configuration
-        ephy_reset(pc);
         emac_reset(pc);
+        ephy_reset(pc);
 
         // Assumptions
         self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
+        // self.emac.cc.modify(|_, w| ); // Use internal PHY (disable external)
         self.emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
         self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
         self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode
 
         // Reset PHY then MAC to latch configuration
-        ephy_reset(pc);
         emac_reset(pc);
+        ephy_reset(pc);
 
         // -------------------- NON-LATCHING CONFIGURATION --------------------
         // This configuration is cleared on peripheral reset and takes effect more-or-less immediately during operation
@@ -485,14 +490,14 @@ impl EthernetDriver {
         while self.emac.miiaddr.read().miib().bit_is_set() {}
     }
 
-    // Clear PHY interrupts by reading their status
+    /// Clear PHY interrupts by reading their status
     fn phyclear(&mut self) {
         self.phyread(EPHYMISR1);
         self.phyread(EPHYMISR2);
     }
 
-    // Clear EMAC interrupts by setting their bits
-    fn emacclear(&mut self) {
+    /// Clear EMAC interrupts by setting their bits
+    pub fn emacclear(&mut self) {
         // These have to be done all-at-once, because the summary bits are sticky and will reset otherwise
         self.emac.dmaris.modify(|_, w| {
             w.nis()
@@ -501,8 +506,8 @@ impl EthernetDriver {
                 .set_bit()
                 .eri()
                 .set_bit()
-                .fbi()
-                .set_bit()
+                // .fbi()
+                // .set_bit()  // Must only be cleared by reset
                 .eti()
                 .set_bit()
                 .rwt()
@@ -606,6 +611,9 @@ impl EthernetDriver {
 
             // Give this descriptor back to the DMA
             self.rxdl.give();
+
+            // Make sure the receive engine is enabled
+            self.rxstart();
 
             let bytes_received = self.rxdl.get_buffer_size();
             Ok(bytes_received as usize)

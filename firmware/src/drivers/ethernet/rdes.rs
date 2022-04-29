@@ -290,7 +290,7 @@ impl fmt::Debug for RXDL {
 ///
 /// See datasheet Figure 23-4 for layout.
 #[derive(Clone, Copy)]
-#[repr(C, align(4))]
+#[repr(transparent)]
 pub struct RDES {
     /// Content
     pub v: [u32; 8],

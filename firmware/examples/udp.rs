@@ -141,7 +141,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         let status = board.enet.emac.dmaris.read().ae().bits();
         writeln!(uart, "EMAC DMA access error type {status:?}");
 
-        board.enet.emacclear(); // Clear clearable interrupts
+        // board.enet.emacclear(); // Clear clearable interrupts
 
         loops = loops + 1;
 

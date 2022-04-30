@@ -6,7 +6,7 @@ use core::fmt;
 pub const RXDESCRS: usize = 4;
 
 /// Number of bytes per buffer segment
-pub const RXBUFSIZE: usize = 1522;  // Maximum size of standard frame
+pub const RXBUFSIZE: usize = 1522;  // Maximum size of standard frame with vlan tag and PTP timestamp
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
@@ -55,6 +55,10 @@ impl RXDL {
                 rxdl.set_rdes1(RDES1::RCH, None);
                 // Disable interrupt-on-completion
                 rxdl.set_rdes1(RDES1::DI, None);
+                // Tell the DMA how large the buffers are
+                rxdl.set_rdes1(RDES1::RBS1, Some(RXBUFSIZE as u16));
+                // DMA initially owns all the descriptors
+                rxdl.give();
             }
         }
 

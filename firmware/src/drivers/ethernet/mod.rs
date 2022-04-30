@@ -582,6 +582,9 @@ impl EthernetDriver {
 
     /// Receive a frame of unknown size that may be up to 1522 bytes
     pub fn receive(&mut self, buf: &mut [u8; RXBUFSIZE]) -> Result<usize, EthernetError> {
+        // Make sure the receive engine is enabled
+        self.rxstart();
+
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
             // and is owned by software, or we have checked all the descriptors
@@ -619,11 +622,8 @@ impl EthernetDriver {
             // Give this descriptor back to the DMA
             self.rxdl.give();
 
-            // Make sure the receive engine is enabled
-            self.rxstart();
-
-            let bytes_received = self.rxdl.get_buffer_size();
-            Ok(bytes_received as usize)
+            let bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
+            Ok(bytes_received)
         }
     }
 }

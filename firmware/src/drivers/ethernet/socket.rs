@@ -38,7 +38,7 @@ impl UDPSocket {
         [u8; (4 * 0 + 20) + (4 * M) + 14 + 8]:,
     {
         let data: Data<M> = Data { value: data };
-        let frame: [u8; (4 * 0 + 20) + (4 * M) + 14 + 8] = frame(
+        let frame: [u8; (4 * 0 + 20) + (4 * M) + 14 + 8] = build_frame(
             data,
             self.src_macaddr,
             self.src_ipaddr,
@@ -55,7 +55,7 @@ impl UDPSocket {
 
 /// Build a standard UDP frame, including zeroed-out checksums which will be replaced by the hardware
 ///
-pub fn frame<const M: usize>(
+pub fn build_frame<const M: usize>(
     data: Data<M>,
     src_macaddr: MACAddr,
     src_ipaddr: IPV4Addr,

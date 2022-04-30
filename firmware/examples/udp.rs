@@ -42,12 +42,12 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             value: board.enet.src_macaddr,
         },
         src_ipaddr: IPV4Addr {
-            value: [10, 0, 0, 2],
+            value: [10, 0, 0, 252],
         },
         src_port: 8053,
         dst_macaddr: None,
         dst_ipaddr: IPV4Addr {
-            value: [172, 17, 0, 1],
+            value: [0, 0, 0, 0],
         },
         dst_port: 8053,
     };
@@ -71,11 +71,10 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             .unwrap_or_default();
         }
 
-
         // Debugging
 
         // Test ethernet receive (without UDP socket)
-        
+
         let mut buf = [0_u8; RXBUFSIZE];
         unsafe {
             match &board.enet.receive(&mut buf) {
@@ -134,7 +133,6 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         writeln!(uart, "EMAC MII receive frame controller status {status:?}");
         let status = board.enet.emac.dmaris.read().rs().bits();
         writeln!(uart, "EMAC DMA receive process state {status:?}");
-
 
         let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
         writeln!(uart, "EMAC DMA bus error? {status:?}");

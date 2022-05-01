@@ -84,14 +84,6 @@ pub struct EthernetDriver {
     // Addressing
     /// Source mac address
     pub src_macaddr: [u8; 6],
-    /// Source IP address
-    pub src_ipaddr: [u8; 4],
-    /// Source port
-    pub src_port: u16,
-    /// Destination IP address
-    pub dst_ipaddr: [u8; 4],
-    /// Destination port
-    pub dst_port: u16,
 
     // RX/TX structures
     /// Volatile access to TX descriptor list
@@ -115,10 +107,6 @@ impl EthernetDriver {
         emac: EMAC0,
         system_clk_freq: PllOutputFrequency,
         src_macaddr: [u8; 6],
-        src_ipaddr: [u8; 4],
-        src_port: u16,
-        dst_ipaddr: [u8; 4],
-        dst_port: u16,
         checksum_offload: bool,
         preamble_length: PreambleLength,
         interframe_gap: InterFrameGap,
@@ -150,10 +138,6 @@ impl EthernetDriver {
             tx_thresh: tx_thresh,
 
             src_macaddr: src_macaddr,
-            src_ipaddr: src_ipaddr,
-            src_port: src_port,
-            dst_ipaddr: dst_ipaddr,
-            dst_port: dst_port,
 
             txdl: TXDL::new(),
             rxdl: RXDL::new(),

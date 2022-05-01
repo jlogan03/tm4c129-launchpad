@@ -42,10 +42,12 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             value: board.enet.src_macaddr,
         },
         src_ipaddr: IPV4Addr {
-            value: [10, 0, 0, 252],
+            value: [10, 0, 0, 230],
         },
         src_port: 8053,
-        dst_macaddr: None,
+        dst_macaddr: Some(MACAddr {
+            value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,],  // Ethernet broadcast
+        }),
         dst_ipaddr: IPV4Addr {
             value: [0, 0, 0, 0],
         },
@@ -74,13 +76,12 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         // Debugging
 
         // Test ethernet receive (without UDP socket)
-
         let mut buf = [0_u8; RXBUFSIZE];
         unsafe {
             match &board.enet.receive(&mut buf) {
                 Ok(num_bytes) => {
-                    writeln!(uart, "Received {} ethernet bytes", num_bytes).unwrap_or_default()
-                }
+                    writeln!(uart, "Received {} ethernet bytes", num_bytes).unwrap_or_default();
+                },
                 Err(x) => writeln!(uart, "Ethernet RX error: {:?}", x).unwrap_or_default(),
             };
         }

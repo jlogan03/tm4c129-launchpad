@@ -8,7 +8,7 @@ use tm4c129x_hal::sysctl::{
 use tm4c129x_hal::time::Hertz;
 
 use crate::drivers;
-use crate::drivers::ethernet::{EthernetDriver, EmacR, EphyR};
+use crate::drivers::ethernet::{EmacR, EphyR, EthernetDriver};
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -198,7 +198,6 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
-
     // Initialize peripherals
     pub(crate) fn new() -> Board {
         let core_peripherals = match tm4c129x_hal::CorePeripherals::take() {
@@ -251,34 +250,24 @@ impl Board {
         emac_enable(&sysctl.power_control);
         //     Get MAC address from read-only memory
         let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
-        let src_ipaddr = [10, 0, 0, 2];
-        let src_port: u16 = 8053;
-        let dst_port: u16 = 8053;
-        let dst_ipaddr = [10, 0, 0, 1];
         //     Initialize EMAC driver
-        let enet: EthernetDriver =
-            EthernetDriver::new(
-                &sysctl.power_control,
-                |pc| ephy_reset_power(pc),
-                // |pc| emac_reset(pc),
-                peripherals.EMAC0,
-                system_clk_freq,
-                src_macaddr,
-                src_ipaddr,
-                src_port,
-                dst_ipaddr,
-                dst_port,
-                true,
-                drivers::ethernet::PreambleLength::_7,
-                drivers::ethernet::InterFrameGap::_96,
-                drivers::ethernet::BackOffLimit::_1024,
-                true,
-                true,
-                drivers::ethernet::TXThresholdDMA::_32,
-                drivers::ethernet::RXThresholdDMA::_32,
-                drivers::ethernet::BurstSizeDMA::_4,
-                drivers::ethernet::BurstSizeDMA::_4,
-            );
+        let enet: EthernetDriver = EthernetDriver::new(
+            &sysctl.power_control,
+            |pc| ephy_reset_power(pc),
+            peripherals.EMAC0,
+            system_clk_freq,
+            src_macaddr,
+            true,
+            drivers::ethernet::PreambleLength::_7,
+            drivers::ethernet::InterFrameGap::_96,
+            drivers::ethernet::BackOffLimit::_1024,
+            true,
+            true,
+            drivers::ethernet::TXThresholdDMA::_32,
+            drivers::ethernet::RXThresholdDMA::_32,
+            drivers::ethernet::BurstSizeDMA::_4,
+            drivers::ethernet::BurstSizeDMA::_4,
+        );
 
         Board {
             core_peripherals,

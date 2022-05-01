@@ -7,9 +7,9 @@ fn main() {
     let dst_addr = "0.0.0.0:8053";
 
     // Bind a socket and tell it to listen for input from a specific address
-    let socket = UdpSocket::bind("127.0.0.1:8053").unwrap();
+    let socket = UdpSocket::bind("0.0.0.0:8053").unwrap();
     socket
-        .set_read_timeout(Some(Duration::from_millis(10)))
+        .set_read_timeout(Some(Duration::from_millis(1)))
         .unwrap();
     let connected = match socket.connect(dst_addr) {
         Ok(_) => {
@@ -21,6 +21,7 @@ fn main() {
             false
         }
     };
+    socket.set_broadcast(true).unwrap(); // Enable sending to broadcast address
 
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
@@ -28,13 +29,10 @@ fn main() {
     loop {
         println!("{i} Loop Start");
         if connected {
-            match socket.recv_from(&mut buf) {
-                Ok((amt, src)) => {
-                    println!("Received {amt} bytes from {src} : {:?}", unsafe{String::from_utf8_unchecked(buf[0..amt].to_vec())});
-                }
-                Err(x) => {
-                    println!("{i} Receive error: {x:?}");
-                }
+            while let Ok((amt, src)) = socket.recv_from(&mut buf) {
+                println!("Received {amt} bytes from {src} : {:?}", unsafe {
+                    String::from_utf8_unchecked(buf[0..amt].to_vec())
+                });
             }
         } else {
             println!("{i} Skipping recv due to connection failure")

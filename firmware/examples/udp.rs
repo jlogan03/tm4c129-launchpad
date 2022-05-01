@@ -42,14 +42,14 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             value: board.enet.src_macaddr,
         },
         src_ipaddr: IPV4Addr {
-            value: [10, 0, 0, 230],
+            value: [10, 0, 0, 229],
         },
         src_port: 8053,
         dst_macaddr: Some(MACAddr {
-            value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,],  // Ethernet broadcast
+            value: [0x2c, 0xf0, 0x5d, 0xa6, 0x20, 0xac,],  // Ethernet broadcast
         }),
         dst_ipaddr: IPV4Addr {
-            value: [0, 0, 0, 0],
+            value: [10, 0, 0, 127],
         },
         dst_port: 8053,
     };

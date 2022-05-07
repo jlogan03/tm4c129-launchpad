@@ -51,7 +51,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], // Ethernet broadcast required for IP packets
         }),
         dst_ipaddr: IPV4Addr {
-            value: [127, 0, 0, 0],
+            value: [255, 255, 255, 255],
         },
         // dst_ipaddr: IPV4Addr {
         //     value: [0, 0, 0, 0],
@@ -157,8 +157,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     tpi = u16::from_be_bytes(etbytes);
 
                     vidbytes.copy_from_slice(&b[14..=15]);
-                    vid = u16::from_be_bytes(vidbytes);
-                    &0b0000_1111_1111_1111;
+                    vid = u16::from_be_bytes(vidbytes) &0b0000_1111_1111_1111;
 
                     etbytes.copy_from_slice(&b[16..=17]);
                     ethertype = u16::from_be_bytes(etbytes);
@@ -169,26 +168,26 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
                 let _ = writeln!(uart, "    ethertype: 0x{ethertype:x}");
 
-                // IP header
+                // IPV4 header
                 if ethertype == 0x800 {
                     // let offs = match tpi {
                     //     x if x == 0x8100 => tagged,
                     //     _ => untagged
                     // };
-                    let offs = 14;
+                    let offs = untagged;
                     srcip.copy_from_slice(&b[offs + 12..=offs + 15]);
                     dstip.copy_from_slice(&b[offs + 16..=offs + 19]);
                     protocol = (&b)[offs + 9];
                     ippacketlen.copy_from_slice(&b[offs + 2..=offs + 3]);
                     let iplen_u16 = u16::from_be_bytes(ippacketlen);
-                    version = b[offs + 0] & 0b00001111;
-                    ipheaderlen = b[offs + 0] & 0b11110000;
+                    version = (b[offs] & 0b1111_0000) >> 4;
+                    ipheaderlen = b[offs] & 0b0000_1111_u8;
 
                     writeip(&mut uart, "src", srcip);
                     writeip(&mut uart, "dst", dstip);
                     let _ = writeln!(uart, "    Protocol: {protocol}");
                     let _ = writeln!(uart, "    IP version: {version}");
-                    let _ = writeln!(uart, "    IP header length: {version} words");
+                    let _ = writeln!(uart, "    IP header length: {ipheaderlen} words");
                     let _ = writeln!(uart, "    IP packet length: {iplen_u16} bytes");
                     delay.delay_ms(2000u32);
                 } else {

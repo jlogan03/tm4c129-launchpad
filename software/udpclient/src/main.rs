@@ -50,7 +50,7 @@ fn main() {
         }
 
         // Broadcast
-        match socket.send_to(b"greetings", "127.0.0.0:8052") {
+        match socket.send_to(b"greetings", "255.255.255.255:8052") {
             Ok(_) => (),//println!("{i} Broadcast send success"),
             Err(x) => println!("{i} Data send failure: {x:?}"),
         }

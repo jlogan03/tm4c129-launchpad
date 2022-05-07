@@ -555,7 +555,7 @@ impl EthernetDriver {
                     return Ok(());
                 } else {
                     // We do not own the current descriptor and can't use it to send data
-                    // Go to the next descriptor
+                    // Go to the next descriptor and try that one
                     self.txdl.next();
                 }
             }

@@ -11,20 +11,22 @@ use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use tm4c129x_hal::gpio::GpioExt;
+use tm4c129x_hal::gpio::gpioa::{PA0, PA1};
+use tm4c129x_hal::gpio::{AlternateFunction, GpioExt, PushPull, AF1};
 use tm4c129x_hal::serial;
+use tm4c129x_hal::serial::*;
 use tm4c129x_hal::time::Bps;
 
 use catnip::{IPV4Addr, MACAddr};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, RXBUFSIZE},
+    drivers::ethernet::{socket::UDPSocket, EthernetError, RXBUFSIZE},
 };
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut pins_a = board.GPIO_PORTA_AHB.split(&board.power_control);
-    let mut uart = serial::Serial::uart0(
+    let mut uart = Serial::uart0(
         board.UART0,
         pins_a.pa1.into_af_push_pull(&mut pins_a.control),
         pins_a.pa0.into_af_push_pull(&mut pins_a.control),
@@ -44,105 +46,240 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         src_ipaddr: IPV4Addr {
             value: [10, 0, 0, 229],
         },
-        src_port: 8053,
+        src_port: 8052,
         dst_macaddr: Some(MACAddr {
-            value: [0x2c, 0xf0, 0x5d, 0xa6, 0x20, 0xac,],  // Ethernet broadcast
+            value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], // Ethernet broadcast required for IP packets
         }),
         dst_ipaddr: IPV4Addr {
-            value: [10, 0, 0, 127],
+            value: [127, 0, 0, 0],
         },
+        // dst_ipaddr: IPV4Addr {
+        //     value: [0, 0, 0, 0],
+        // },
         dst_port: 8053,
     };
 
-    uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;
+    let mut led_state = 0;
+
+    let mut writemac = |u: &mut Serial<
+        UART0,
+        PA1<AlternateFunction<AF1, PushPull>>,
+        PA0<AlternateFunction<AF1, PushPull>>,
+        (),
+        (),
+    >,
+                        prefix: &str,
+                        v: [u8; 6]| {
+        // let _ = writeln!(uart, "");
+        let _ = write!(u, "    {prefix} mac: ");
+        for x in v {
+            let _ = write!(u, "{x:x} ");
+        }
+        let _ = writeln!(u, "");
+    };
+
+    let mut writeip = |u: &mut Serial<
+        UART0,
+        PA1<AlternateFunction<AF1, PushPull>>,
+        PA0<AlternateFunction<AF1, PushPull>>,
+        (),
+        (),
+    >,
+                       prefix: &str,
+                       v: [u8; 4]| {
+        // let _ = writeln!(uart, "");
+        let _ = write!(u, "    {prefix} ip: ");
+        for x in v {
+            let _ = write!(u, "{x} ");
+        }
+        let _ = writeln!(u, "");
+    };
+
+    fn write_bytes<const N: usize>(
+        u: &mut Serial<
+            UART0,
+            PA1<AlternateFunction<AF1, PushPull>>,
+            PA0<AlternateFunction<AF1, PushPull>>,
+            (),
+            (),
+        >,
+        prefix: &str,
+        v: [u8; N],
+    ) {
+        let _ = writeln!(u, "{prefix}");
+        for i in 0..N {
+            let thisv = v[i];
+            let _ = write!(u, "{thisv}");
+        }
+        let _ = writeln!(u, "");
+    }
+
+    let mut b = [0_u8; RXBUFSIZE];
+    let mut srcmac = [0_u8; 6];
+    let mut dstmac = [0_u8; 6];
+    let mut srcip = [0_u8; 4];
+    let mut dstip = [0_u8; 4];
+    let mut ethertype = 0_u16;
+    let mut tpi = 0_u16;
+    let mut vid = 0_u16;
+    let mut tpibytes = [0_u8; 2];
+    let mut vidbytes = [0_u8; 2];
+    let mut etbytes = [0_u8; 2];
+
+    const untagged: usize = 14;
+    const tagged: usize = 18;
+
+    let mut protocol = 0_u8;
+    let mut ippacketlen = [0_u8; 2];
+    let mut version = 0_u8;
+    let mut ipheaderlen = 14_u8;
     loop {
-        // Spam serial
-        writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
-        while let Ok(ch) = uart.read() {
-            // Echo
-            writeln!(uart, "byte read {}", ch).unwrap_or_default();
-
-            // Show MAC address
-            let addr = udp.src_macaddr.value;
-            writeln!(
-                uart,
-                "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
-                addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
-            )
-            .unwrap_or_default();
-        }
-
-        // Debugging
-
         // Test ethernet receive (without UDP socket)
-        let mut buf = [0_u8; RXBUFSIZE];
-        unsafe {
-            match &board.enet.receive(&mut buf) {
-                Ok(num_bytes) => {
-                    writeln!(uart, "Received {} ethernet bytes", num_bytes).unwrap_or_default();
-                },
-                Err(x) => writeln!(uart, "Ethernet RX error: {:?}", x).unwrap_or_default(),
-            };
-        }
-        let rxdl = &mut (board.enet.rxdl);
-        writeln!(uart, "{:?}", rxdl).unwrap_or_default();
+        match &board.enet.receive(&mut b) {
+            Ok(num_bytes) => {
+                // We received ethernet data
+                let _ = writeln!(uart, "Received {num_bytes} ethernet bytes");
+
+                // Ethernet header
+                dstmac.copy_from_slice(&b[0..=5]);
+                srcmac.copy_from_slice(&b[6..=11]);
+
+                etbytes.copy_from_slice(&b[12..=13]);
+                ethertype = u16::from_be_bytes(etbytes);
+
+                writemac(&mut uart, "src", srcmac);
+                writemac(&mut uart, "dst", dstmac);
+
+                if ethertype == 0x8100 {
+                    // VLAN tagged
+                    tpibytes.copy_from_slice(&b[12..=13]);
+                    tpi = u16::from_be_bytes(etbytes);
+
+                    vidbytes.copy_from_slice(&b[14..=15]);
+                    vid = u16::from_be_bytes(vidbytes);
+                    &0b0000_1111_1111_1111;
+
+                    etbytes.copy_from_slice(&b[16..=17]);
+                    ethertype = u16::from_be_bytes(etbytes);
+
+                    let _ = writeln!(uart, "    VLAN TPI: 0x{tpi:x}");
+                    let _ = writeln!(uart, "    VLAN VID: {vid}");
+                }
+
+                let _ = writeln!(uart, "    ethertype: 0x{ethertype:x}");
+
+                // IP header
+                if ethertype == 0x800 {
+                    // let offs = match tpi {
+                    //     x if x == 0x8100 => tagged,
+                    //     _ => untagged
+                    // };
+                    let offs = 14;
+                    srcip.copy_from_slice(&b[offs + 12..=offs + 15]);
+                    dstip.copy_from_slice(&b[offs + 16..=offs + 19]);
+                    protocol = (&b)[offs + 9];
+                    ippacketlen.copy_from_slice(&b[offs + 2..=offs + 3]);
+                    let iplen_u16 = u16::from_be_bytes(ippacketlen);
+                    version = b[offs + 0] & 0b00001111;
+                    ipheaderlen = b[offs + 0] & 0b11110000;
+
+                    writeip(&mut uart, "src", srcip);
+                    writeip(&mut uart, "dst", dstip);
+                    let _ = writeln!(uart, "    Protocol: {protocol}");
+                    let _ = writeln!(uart, "    IP version: {version}");
+                    let _ = writeln!(uart, "    IP header length: {version} words");
+                    let _ = writeln!(uart, "    IP packet length: {iplen_u16} bytes");
+                    delay.delay_ms(2000u32);
+                } else {
+                    continue;
+                }
+            }
+            Err(EthernetError::NothingToReceive) => (),
+            Err(x) => writeln!(uart, "Ethernet RX error: {:?}", x).unwrap_or_default(),
+        };
 
         // Test UDP transmit
         match udp.transmit::<3>(&mut board.enet, *b"hello world!") {
-            Ok(_) => writeln!(uart, "UDP transmit started").unwrap_or_default(),
+            Ok(_) => (), //writeln!(uart, "UDP transmit started").unwrap_or_default(),
             Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
         };
-        let txdl = &mut (board.enet.txdl);
-        writeln!(uart, "{:?}", txdl).unwrap_or_default();
 
-        // Check EMAC status
-        let status = board.enet.emac.status.read().txpaused().bit_is_set();
-        writeln!(uart, "EMAC TX paused? {status}");
-        let status = board.enet.emac.hostxdesc.read().bits();
-        writeln!(uart, "EMAC TX descr addr {status}");
-        let status = board.enet.emac.hostxba.read().bits();
-        writeln!(uart, "EMAC TX buf addr {status}");
-        let status = board.enet.emac.txdladdr.read().bits();
-        writeln!(uart, "EMAC TXDL addr {status}");
-        let status = board.enet.emac.status.read().txfe().bit_is_set();
-        writeln!(uart, "EMAC TX FIFO not empty? {status}");
-        let status = board.enet.emac.status.read().twc().bit_is_set();
-        writeln!(uart, "EMAC TX FIFO write controller active? {status}");
-        let status = board.enet.emac.status.read().tpe().bit_is_set();
-        writeln!(uart, "EMAC MII transmit protocol engine status? {status}");
-        let status = board.enet.emac.status.read().tfc().variant();
-        writeln!(uart, "EMAC MII transmit frame controller status {status:?}");
-        let status = board.enet.emac.dmaris.read().ts().bits();
-        writeln!(uart, "EMAC DMA transmit process state {status:?}");
+        // Spam serial
+        if loops % 10000 == 0 {
+            writeln!(uart, "\n\nHello, world! Loops = {}", loops).unwrap_or_default();
+            while let Ok(ch) = uart.read() {
+                // Echo
+                writeln!(uart, "byte read {}", ch).unwrap_or_default();
 
-        let status = board.enet.emac.status.read().rrc().bits();
-        writeln!(uart, "EMAC RX FIFO controller state? {status:?}");
-        let status = board.enet.emac.hosrxdesc.read().bits();
-        writeln!(uart, "EMAC RX descr addr {status}");
-        let status = board.enet.emac.hosrxba.read().bits();
-        writeln!(uart, "EMAC RX buf addr {status}");
-        let status = board.enet.emac.rxdladdr.read().bits();
-        writeln!(uart, "EMAC RXDL addr {status}");
-        let status = board.enet.emac.status.read().rxf().bits();
-        writeln!(uart, "EMAC RX FIFO status? {status:?}");
-        let status = board.enet.emac.status.read().rwc().bit_is_set();
-        writeln!(uart, "EMAC RX FIFO write controller active? {status}");
-        let status = board.enet.emac.status.read().rpe().bit_is_set();
-        writeln!(uart, "EMAC MII receive protocol engine status? {status}");
-        let status = board.enet.emac.status.read().rfcfc().bits();
-        writeln!(uart, "EMAC MII receive frame controller status {status:?}");
-        let status = board.enet.emac.dmaris.read().rs().bits();
-        writeln!(uart, "EMAC DMA receive process state {status:?}");
+                // Show MAC address
+                let addr = udp.src_macaddr.value;
+                writeln!(
+                    uart,
+                    "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
+                    addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
+                )
+                .unwrap_or_default();
+            }
 
-        let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
-        writeln!(uart, "EMAC DMA bus error? {status:?}");
-        let status = board.enet.emac.dmaris.read().ae().bits();
-        writeln!(uart, "EMAC DMA access error type {status:?}");
+            // Debugging
+            let rxdl = &mut (board.enet.rxdl);
+            writeln!(uart, "{:?}", rxdl).unwrap_or_default();
+
+            let txdl = &mut (board.enet.txdl);
+            writeln!(uart, "{:?}", txdl).unwrap_or_default();
+
+            // Check EMAC status
+            let status = board.enet.emac.status.read().txpaused().bit_is_set();
+            writeln!(uart, "EMAC TX paused? {status}");
+            let status = board.enet.emac.hostxdesc.read().bits();
+            writeln!(uart, "EMAC TX descr addr {status}");
+            let status = board.enet.emac.hostxba.read().bits();
+            writeln!(uart, "EMAC TX buf addr {status}");
+            let status = board.enet.emac.txdladdr.read().bits();
+            writeln!(uart, "EMAC TXDL addr {status}");
+            let status = board.enet.emac.status.read().txfe().bit_is_set();
+            writeln!(uart, "EMAC TX FIFO not empty? {status}");
+            let status = board.enet.emac.status.read().twc().bit_is_set();
+            writeln!(uart, "EMAC TX FIFO write controller active? {status}");
+            let status = board.enet.emac.status.read().tpe().bit_is_set();
+            writeln!(uart, "EMAC MII transmit protocol engine status? {status}");
+            let status = board.enet.emac.status.read().tfc().variant();
+            writeln!(uart, "EMAC MII transmit frame controller status {status:?}");
+            let status = board.enet.emac.dmaris.read().ts().bits();
+            writeln!(uart, "EMAC DMA transmit process state {status:?}");
+
+            let status = board.enet.emac.status.read().rrc().bits();
+            writeln!(uart, "EMAC RX FIFO controller state? {status:?}");
+            let status = board.enet.emac.hosrxdesc.read().bits();
+            writeln!(uart, "EMAC RX descr addr {status}");
+            let status = board.enet.emac.hosrxba.read().bits();
+            writeln!(uart, "EMAC RX buf addr {status}");
+            let status = board.enet.emac.rxdladdr.read().bits();
+            writeln!(uart, "EMAC RXDL addr {status}");
+            let status = board.enet.emac.status.read().rxf().bits();
+            writeln!(uart, "EMAC RX FIFO status? {status:?}");
+            let status = board.enet.emac.status.read().rwc().bit_is_set();
+            writeln!(uart, "EMAC RX FIFO write controller active? {status}");
+            let status = board.enet.emac.status.read().rpe().bit_is_set();
+            writeln!(uart, "EMAC MII receive protocol engine status? {status}");
+            let status = board.enet.emac.status.read().rfcfc().bits();
+            writeln!(uart, "EMAC MII receive frame controller status {status:?}");
+            let status = board.enet.emac.dmaris.read().rs().bits();
+            writeln!(uart, "EMAC DMA receive process state {status:?}");
+
+            let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
+            writeln!(uart, "EMAC DMA bus error? {status:?}");
+            let status = board.enet.emac.dmaris.read().ae().bits();
+            writeln!(uart, "EMAC DMA access error type {status:?}\n\n");
+        }
 
         // board.enet.emacclear(); // Clear clearable interrupts
-
         loops = loops + 1;
+
+        if loops % 50 == 0 {
+            led_state = (led_state + 1) % 4;
+        }
 
         if *(&(board.button0).is_low().unwrap_or_default()) {
             // Turn all the LEDs on
@@ -150,21 +287,24 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             let _ = &(board.led1).set_high().unwrap_or_default();
             let _ = &(board.led2).set_high().unwrap_or_default();
             let _ = &(board.led3).set_high().unwrap_or_default();
-            delay.delay_ms(250u32);
         } else {
             // Cycle through each of the 4 LEDs
-            let _ = &(board.led0).set_low().unwrap_or_default();
-            let _ = &(board.led1).set_high().unwrap_or_default();
-            delay.delay_ms(250u32);
-            let _ = &(board.led1).set_low().unwrap_or_default();
-            let _ = &(board.led2).set_high().unwrap_or_default();
-            delay.delay_ms(250u32);
-            let _ = &(board.led2).set_low().unwrap_or_default();
-            let _ = &(board.led3).set_high().unwrap_or_default();
-            delay.delay_ms(250u32);
-            let _ = &(board.led3).set_low().unwrap_or_default();
-            let _ = &(board.led0).set_high().unwrap_or_default();
-            delay.delay_ms(250u32);
+            if led_state == 0 {
+                let _ = &(board.led0).set_low().unwrap_or_default();
+                let _ = &(board.led1).set_high().unwrap_or_default();
+            } else if led_state == 1 {
+                let _ = &(board.led1).set_low().unwrap_or_default();
+                let _ = &(board.led2).set_high().unwrap_or_default();
+            } else if led_state == 2 {
+                let _ = &(board.led2).set_low().unwrap_or_default();
+                let _ = &(board.led3).set_high().unwrap_or_default();
+            } else if led_state == 3 {
+                let _ = &(board.led3).set_low().unwrap_or_default();
+                let _ = &(board.led0).set_high().unwrap_or_default();
+            } else {
+                continue;
+            }
         }
+        delay.delay_ms(1u32);
     }
 }

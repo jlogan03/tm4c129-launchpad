@@ -70,10 +70,10 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         (),
     >,
                         prefix: &str,
-                        v: [u8; 6]| {
+                        v: &[u8; 6]| {
         // let _ = writeln!(uart, "");
-        let _ = write!(u, "    {prefix} mac: ");
-        for x in v {
+        let _ = write!(u, "{prefix}");
+        for x in *v {
             let _ = write!(u, "{x:x} ");
         }
         let _ = writeln!(u, "");
@@ -87,35 +87,18 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         (),
     >,
                        prefix: &str,
-                       v: [u8; 4]| {
+                       v: &[u8; 4]| {
         // let _ = writeln!(uart, "");
-        let _ = write!(u, "    {prefix} ip: ");
-        for x in v {
+        let _ = write!(u, "{prefix}");
+        for x in *v {
             let _ = write!(u, "{x} ");
         }
         let _ = writeln!(u, "");
     };
 
-    fn write_bytes<const N: usize>(
-        u: &mut Serial<
-            UART0,
-            PA1<AlternateFunction<AF1, PushPull>>,
-            PA0<AlternateFunction<AF1, PushPull>>,
-            (),
-            (),
-        >,
-        prefix: &str,
-        v: [u8; N],
-    ) {
-        let _ = writeln!(u, "{prefix}");
-        for i in 0..N {
-            let thisv = v[i];
-            let _ = write!(u, "{thisv}");
-        }
-        let _ = writeln!(u, "");
-    }
-
     let mut b = [0_u8; RXBUFSIZE];
+
+    // Eth
     let mut srcmac = [0_u8; 6];
     let mut dstmac = [0_u8; 6];
     let mut srcip = [0_u8; 4];
@@ -130,10 +113,22 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     const untagged: usize = 14;
     const tagged: usize = 18;
 
+    // IP
     let mut protocol = 0_u8;
     let mut ippacketlen = [0_u8; 2];
     let mut version = 0_u8;
     let mut ipheaderlen = 14_u8;
+
+    // ARP
+    let mut htypebytes = [0_u8; 2];
+    let mut ptypebytes = [0_u8; 2];
+    let mut operbytes = [0_u8; 2];
+    let mut sha = [0_u8; 6];
+    let mut spa = [0_u8; 4];
+    let mut tha = [0_u8; 6];
+    let mut tpa = [0_u8; 4];
+    let mut arppacket = [0_u8; 52];
+
     loop {
         // Test ethernet receive (without UDP socket)
         match &board.enet.receive(&mut b) {
@@ -148,16 +143,19 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 etbytes.copy_from_slice(&b[12..=13]);
                 ethertype = u16::from_be_bytes(etbytes);
 
-                writemac(&mut uart, "src", srcmac);
-                writemac(&mut uart, "dst", dstmac);
+                writemac(&mut uart, "    src macaddr: ", &srcmac);
+                writemac(&mut uart, "    dst macaddr: ", &dstmac);
 
+                let offs = untagged; // Assume untagged eth header length
+
+                // Handle vlan
                 if ethertype == 0x8100 {
                     // VLAN tagged
                     tpibytes.copy_from_slice(&b[12..=13]);
                     tpi = u16::from_be_bytes(etbytes);
 
                     vidbytes.copy_from_slice(&b[14..=15]);
-                    vid = u16::from_be_bytes(vidbytes) &0b0000_1111_1111_1111;
+                    vid = u16::from_be_bytes(vidbytes) & 0b0000_1111_1111_1111;
 
                     etbytes.copy_from_slice(&b[16..=17]);
                     ethertype = u16::from_be_bytes(etbytes);
@@ -168,13 +166,9 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
                 let _ = writeln!(uart, "    ethertype: 0x{ethertype:x}");
 
-                // IPV4 header
                 if ethertype == 0x800 {
-                    // let offs = match tpi {
-                    //     x if x == 0x8100 => tagged,
-                    //     _ => untagged
-                    // };
-                    let offs = untagged;
+                    // IPV4 packet
+                    let _ = writeln!(uart, "IP packet");
                     srcip.copy_from_slice(&b[offs + 12..=offs + 15]);
                     dstip.copy_from_slice(&b[offs + 16..=offs + 19]);
                     protocol = (&b)[offs + 9];
@@ -183,13 +177,70 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     version = (b[offs] & 0b1111_0000) >> 4;
                     ipheaderlen = b[offs] & 0b0000_1111_u8;
 
-                    writeip(&mut uart, "src", srcip);
-                    writeip(&mut uart, "dst", dstip);
+                    writeip(&mut uart, "    src ipaddr", &srcip);
+                    writeip(&mut uart, "    dst ipaddr", &dstip);
                     let _ = writeln!(uart, "    Protocol: {protocol}");
                     let _ = writeln!(uart, "    IP version: {version}");
                     let _ = writeln!(uart, "    IP header length: {ipheaderlen} words");
                     let _ = writeln!(uart, "    IP packet length: {iplen_u16} bytes");
                     delay.delay_ms(2000u32);
+                } else if ethertype == 0x806 {
+                    // ARP packet
+                    let _ = writeln!(uart, "ARP packet");
+                    arppacket.copy_from_slice(&b[offs..offs + 52]);
+
+                    htypebytes.copy_from_slice(&arppacket[0..=1]);
+                    let _ = writeln!(
+                        uart,
+                        "    ARP hardware type: {}",
+                        u16::from_be_bytes(htypebytes)
+                    );
+
+                    ptypebytes.copy_from_slice(&arppacket[2..=3]);
+                    let _ = writeln!(
+                        uart,
+                        "    ARP protocol type: {}",
+                        u16::from_be_bytes(ptypebytes)
+                    );
+
+                    let _ = writeln!(uart, "    ARP hardware address length: {}", &arppacket[4]);
+                    let _ = writeln!(uart, "    ARP protocol address length: {}", &arppacket[5]);
+                    let _ = writeln!(uart, "    ARP hardware address length: {}", &arppacket[4]);
+
+                    operbytes.copy_from_slice(&arppacket[6..=7]);
+                    let _ = writeln!(
+                        uart,
+                        "    ARP operation type: {}",
+                        u16::from_be_bytes(operbytes)
+                    );
+
+                    sha.copy_from_slice(&arppacket[8..14]);
+                    writemac(
+                        &mut uart,
+                        "    ARP sender hardware address: ",
+                        &sha,
+                    );
+
+                    spa.copy_from_slice(&arppacket[14..18]);
+                    writeip(
+                        &mut uart,
+                        "    ARP sender protocol address: ",
+                        &spa,
+                    );
+
+                    tha.copy_from_slice(&arppacket[18..24]);
+                    writemac(
+                        &mut uart,
+                        "    ARP target harware address: ",
+                        &tha,
+                    );
+
+                    tpa.copy_from_slice(&arppacket[24..28]);
+                    writeip(
+                        &mut uart,
+                        "    ARP target protocol address: ",
+                        &tpa,
+                    );
                 } else {
                     continue;
                 }

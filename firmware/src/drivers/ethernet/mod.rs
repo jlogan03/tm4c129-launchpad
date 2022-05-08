@@ -522,7 +522,7 @@ impl EthernetDriver {
         while self.emac.dmabusmod.read().swr().bit_is_set() {};
     }
 
-    /// Attempt to send an ethernet frame that has been reduced to (a multiple of 4) bytes
+    /// Attempt to send an ethernet frame that has been reduced to bytes
     pub fn transmit<const N: usize>(&mut self, data: [u8; N]) -> Result<(), EthernetError> {
         // Check data length
         if N > TXBUFSIZE / 4 {

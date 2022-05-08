@@ -168,7 +168,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
                 if ethertype == 0x800 {
                     // IPV4 packet
-                    let _ = writeln!(uart, "IP packet");
+                    let _ = writeln!(uart, "  IP packet");
                     srcip.copy_from_slice(&b[offs + 12..=offs + 15]);
                     dstip.copy_from_slice(&b[offs + 16..=offs + 19]);
                     protocol = (&b)[offs + 9];
@@ -177,8 +177,8 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     version = (b[offs] & 0b1111_0000) >> 4;
                     ipheaderlen = b[offs] & 0b0000_1111_u8;
 
-                    writeip(&mut uart, "    src ipaddr", &srcip);
-                    writeip(&mut uart, "    dst ipaddr", &dstip);
+                    writeip(&mut uart, "    src ipaddr: ", &srcip);
+                    writeip(&mut uart, "    dst ipaddr: ", &dstip);
                     let _ = writeln!(uart, "    Protocol: {protocol}");
                     let _ = writeln!(uart, "    IP version: {version}");
                     let _ = writeln!(uart, "    IP header length: {ipheaderlen} words");
@@ -186,7 +186,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     delay.delay_ms(2000u32);
                 } else if ethertype == 0x806 {
                     // ARP packet
-                    let _ = writeln!(uart, "ARP packet");
+                    let _ = writeln!(uart, "  ARP packet");
                     arppacket.copy_from_slice(&b[offs..offs + 52]);
 
                     htypebytes.copy_from_slice(&arppacket[0..=1]);
@@ -199,13 +199,12 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     ptypebytes.copy_from_slice(&arppacket[2..=3]);
                     let _ = writeln!(
                         uart,
-                        "    ARP protocol type: {}",
+                        "    ARP protocol type: 0x{:x}",
                         u16::from_be_bytes(ptypebytes)
                     );
 
                     let _ = writeln!(uart, "    ARP hardware address length: {}", &arppacket[4]);
                     let _ = writeln!(uart, "    ARP protocol address length: {}", &arppacket[5]);
-                    let _ = writeln!(uart, "    ARP hardware address length: {}", &arppacket[4]);
 
                     operbytes.copy_from_slice(&arppacket[6..=7]);
                     let _ = writeln!(
@@ -215,32 +214,71 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     );
 
                     sha.copy_from_slice(&arppacket[8..14]);
-                    writemac(
-                        &mut uart,
-                        "    ARP sender hardware address: ",
-                        &sha,
-                    );
+                    writemac(&mut uart, "    ARP sender hardware address: ", &sha);
 
                     spa.copy_from_slice(&arppacket[14..18]);
-                    writeip(
-                        &mut uart,
-                        "    ARP sender protocol address: ",
-                        &spa,
-                    );
+                    writeip(&mut uart, "    ARP sender protocol address: ", &spa);
 
                     tha.copy_from_slice(&arppacket[18..24]);
-                    writemac(
-                        &mut uart,
-                        "    ARP target harware address: ",
-                        &tha,
-                    );
+                    writemac(&mut uart, "    ARP target harware address: ", &tha);
 
                     tpa.copy_from_slice(&arppacket[24..28]);
-                    writeip(
-                        &mut uart,
-                        "    ARP target protocol address: ",
-                        &tpa,
+                    writeip(&mut uart, "    ARP target protocol address: ", &tpa);
+
+                    // Send an ARP response
+                    let enetheader = catnip::enet::EthernetHeader::new(
+                        MACAddr {
+                            value: board.enet.src_macaddr,
+                        },
+                        Some(MACAddr {
+                            value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], // Ethernet broadcast required for IP packets
+                        }),
+                        catnip::EtherType::ARP,
                     );
+
+                    let mut arpresponse = [0_u8; 52];
+                    let arpparts = 
+                        [
+                            &1_u16.to_be_bytes()[..],     // hardware type ethernet
+                            &0x800_u16.to_be_bytes()[..], // IPV4 protocol
+                            &[6_u8][..],                     // 6 byte mac address
+                            &[4_u8][..],                     // 4 byte ip address
+                            &board.enet.src_macaddr[..],
+                            &udp.src_ipaddr.value[..],
+                            &sha[..],
+                            &spa[..],
+                        ];
+                    let mut k = 0;
+                    for i in 0..arpparts.len() {
+                        for j in 0..arpparts[i].len() {
+                            if k < arpresponse.len() {
+                                arpresponse[k] = arpparts[i][j];
+                            }
+                            k = k + 1;
+                        }
+                    }
+
+                    let mut eth_arp_frame = [0_u8; 14 + 52 + 4];
+                    let eth_arp_parts = [
+                        &enetheader.to_be_bytes()[..],
+                        &arpresponse[..],
+                        &[0_u8; 4][..] // Empty ethernet checksum to be populated by the crc peripheral
+                    ];
+                    let mut k = 0;
+                    for i in 0..eth_arp_parts.len() {
+                        for j in 0..eth_arp_parts[i].len() {
+                            if k < eth_arp_frame.len() {
+                                eth_arp_frame[k] = eth_arp_parts[i][j];
+                            }
+                            k = k + 1;
+                        }
+                    }
+
+                    match board.enet.transmit(eth_arp_frame) {
+                        Ok(_) => writeln!(uart, "Sent ARP response"),
+                        Err(x) => writeln!(uart, "Ethernet TX error: {:?}", x),
+                    };
+
                 } else {
                     continue;
                 }

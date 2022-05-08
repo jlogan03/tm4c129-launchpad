@@ -11,6 +11,7 @@ use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
+use tm4c129_launchpad::drivers::ethernet::tdes::TDES0;
 use tm4c129x_hal::gpio::gpioa::{PA0, PA1};
 use tm4c129x_hal::gpio::{AlternateFunction, GpioExt, PushPull, AF1};
 use tm4c129x_hal::serial;
@@ -247,6 +248,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                         &udp.src_ipaddr.value[..],
                         &sha[..],
                         // &[0_u8; 6],
+                        // &[0_u8; 4],
                         &spa[..],
                     ];
                     let mut k = 0;
@@ -258,7 +260,9 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                             k = k + 1;
                         }
                     }
-                    // let _ = writeln!(uart, "wrote {k} bytes to ARP packet");
+                    let _ = writeln!(uart, "wrote {k} bytes to ARP packet");
+                    let byte = arpresponse[5];
+                    let _ = writeln!(uart, "byte = {byte}");
 
                     let mut eth_arp_frame = [0_u8; 64]; // Minimum ethernet frame length
                     let eth_arp_parts = [
@@ -277,7 +281,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                         }
                     }
 
-                    match board.enet.transmit(eth_arp_frame) {
+                    match board.enet.transmit(eth_arp_frame, None) {  // Do not insert IP/UDP checksums for ARP packet
                         Ok(_) => writeln!(uart, "Sent ARP response"),
                         Err(x) => writeln!(uart, "Ethernet TX error: {:?}", x),
                     };
@@ -290,7 +294,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         };
 
         // Test UDP transmit
-        match udp.transmit::<3>(&mut board.enet, *b"hello world!") {
+        match udp.transmit::<6>(&mut board.enet, *b"hello world! ... ... ...") {
             Ok(_) => (), //writeln!(uart, "UDP transmit started").unwrap_or_default(),
             Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
         };

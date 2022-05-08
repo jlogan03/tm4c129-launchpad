@@ -5,6 +5,7 @@ use catnip::ip::{IPV4Header, DSCP};
 use catnip::udp::{UDPHeader, UDPPacket};
 use catnip::{Data, MACAddr, IPV4Addr};
 
+use super::tdes::TDES0;
 use super::{EthernetDriver, EthernetError};
 
 /// Thin adapter layer to generate UDP packets without constantly passing the address info around
@@ -35,10 +36,10 @@ impl UDPSocket {
         [u8; 4 * 0]:,
         [u8; 4 * 0 + 20]:,
         [u8; 4 * 0 + 20 + 4 * M + 8]:,
-        [u8; (4 * 0 + 20) + (4 * M) + 14 + 8]:,
+        [u8; (4 * 0 + 20) + (4 * M) + 14 + 8 + 4]:,
     {
         let data: Data<M> = Data { value: data };
-        let frame: [u8; (4 * 0 + 20) + (4 * M) + 14 + 8] = build_frame(
+        let frame: [u8; (4 * 0 + 20) + (4 * M) + 14 + 8 + 4] = build_frame(
             data,
             self.src_macaddr,
             self.src_ipaddr,
@@ -49,7 +50,7 @@ impl UDPSocket {
         )
         .to_be_bytes();
 
-        unsafe { enet.transmit(frame) }
+        unsafe { enet.transmit(frame, Some(TDES0::CicFull)) }
     }
 }
 
@@ -68,7 +69,7 @@ where
     [u8; 4 * 0]:,
     [u8; 4 * 0 + 20]:,
     [u8; 4 * 0 + 20 + 4 * M + 8]:,
-    [u8; (4 * 0 + 20) + (4 * M) + 14 + 8]:,
+    [u8; (4 * 0 + 20) + (4 * M) + 14 + 8 + 4]:,
 {
     let mut ipheader: IPV4Header<0> = IPV4Header::new(); // IP header with no Options segment
     ipheader.src_ipaddr(src_ipaddr)

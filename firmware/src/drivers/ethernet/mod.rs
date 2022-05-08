@@ -529,10 +529,14 @@ impl EthernetDriver {
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes
-    pub fn transmit<const N: usize>(&mut self, data: [u8; N]) -> Result<(), EthernetError> {
-        // Check data length
+    pub fn transmit<const N: usize>(&mut self, data: [u8; N], cic: Option<TDES0>) -> Result<(), EthernetError> {
+        // Check if data fits in buffer
         if N > TXBUFSIZE / 4 {
             return Err(EthernetError::BufferOverflow);
+        }
+        // Check if data meets minimum length required for ethernet frame
+        if N < 64 {
+            return Err(EthernetError::FrameTooShort);
         }
 
         // Attempt send
@@ -540,6 +544,10 @@ impl EthernetDriver {
             for _ in 0..TXDESCRS {
                 if self.txdl.is_owned() {
                     // We own the current descriptor; load our data into the buffer and tell the DMA to send it
+                    //    Clear checksum insertion control field
+                    let mut tdes = self.txdl.tdesref.read_volatile();
+                    tdes.v[0] &= !(0b11 << 22);  // Clear bits 22 and 23 of TDES0
+                    self.txdl.tdesref.write_volatile(tdes);
                     //    Load data into buffer
                     let mut _buffer: *mut [u8; N] = self.txdl.get_buffer_pointer() as *mut [u8; N];
                     _buffer.write_volatile(data);
@@ -547,7 +555,10 @@ impl EthernetDriver {
                     self.txdl.set_buffer_size(N as u16);
                     //    Set common settings
                     self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-                    self.txdl.set_tdes0(TDES0::CicFull); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+                    //    Set checksum insertion control for IP/UDP if it is provided
+                    if let Some(x) = cic {
+                        self.txdl.set_tdes0(x); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
+                    }
                                                          // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
                     self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
                     self.txdl.give(); // Give this descriptor & buffer back to the DMA
@@ -709,6 +720,8 @@ pub enum EthernetError {
     BufferOverflow,
     /// No descriptor available for transmission
     DescriptorUnavailable,
+    /// Frame is less than 64 bytes and needs padding
+    FrameTooShort,
     /// Nothing to receive from RX descriptor buffers
     NothingToReceive,
 }

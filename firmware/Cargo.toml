@@ -32,6 +32,6 @@ cortex-m-rt = "0.7.1"
 embedded-hal = "0.2.7"
 tm4c129x-hal = "0.9.2"
 panic-never = "0.1.0"
-#catnip = { path="../catnip/catnip", features = ["panic_never"] }
-catnip = { version = "0.1.3", features = ["panic_never"] }
+catnip = { path="../../catnip/catnip", features = ["panic_never"] }
+#catnip = { version = "0.1.3", features = ["panic_never"] }
 #futures = { version = "0.3", default-features = false }

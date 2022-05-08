@@ -48,10 +48,10 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         },
         src_port: 8052,
         dst_macaddr: Some(MACAddr {
-            value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], // Ethernet broadcast required for IP packets
+            value: [0xFF_u8; 6], // Ethernet broadcast required for IP packets
         }),
         dst_ipaddr: IPV4Addr {
-            value: [255, 255, 255, 255],
+            value: [10, 0, 0, 127],
         },
         // dst_ipaddr: IPV4Addr {
         //     value: [0, 0, 0, 0],
@@ -127,7 +127,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut spa = [0_u8; 4];
     let mut tha = [0_u8; 6];
     let mut tpa = [0_u8; 4];
-    let mut arppacket = [0_u8; 52];
+    let mut arppacket = [0_u8; 28];
 
     loop {
         // Test ethernet receive (without UDP socket)
@@ -187,7 +187,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 } else if ethertype == 0x806 {
                     // ARP packet
                     let _ = writeln!(uart, "  ARP packet");
-                    arppacket.copy_from_slice(&b[offs..offs + 52]);
+                    arppacket.copy_from_slice(&b[offs..offs + 28]);
 
                     htypebytes.copy_from_slice(&arppacket[0..=1]);
                     let _ = writeln!(
@@ -231,23 +231,24 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                             value: board.enet.src_macaddr,
                         },
                         Some(MACAddr {
-                            value: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], // Ethernet broadcast required for IP packets
+                            value: [0xFF_u8; 6], // Ethernet broadcast required for IP packets
                         }),
                         catnip::EtherType::ARP,
                     );
 
-                    let mut arpresponse = [0_u8; 52];
-                    let arpparts = 
-                        [
-                            &1_u16.to_be_bytes()[..],     // hardware type ethernet
-                            &0x800_u16.to_be_bytes()[..], // IPV4 protocol
-                            &[6_u8][..],                     // 6 byte mac address
-                            &[4_u8][..],                     // 4 byte ip address
-                            &board.enet.src_macaddr[..],
-                            &udp.src_ipaddr.value[..],
-                            &sha[..],
-                            &spa[..],
-                        ];
+                    let mut arpresponse = [0_u8; 46];  // 28 bytes padded to ethernet minimum payload size
+                    let arpparts = [
+                        &1_u16.to_be_bytes()[..],     // hardware type ethernet
+                        &0x800_u16.to_be_bytes()[..], // IPV4 protocol
+                        &[6_u8][..],                  // 6 byte mac addresses
+                        &[4_u8][..],                  // 4 byte ip addresses
+                        &2_u16.to_be_bytes()[..],     // Operation type: 1 => request, 2 => response
+                        &board.enet.src_macaddr[..],
+                        &udp.src_ipaddr.value[..],
+                        &sha[..],
+                        // &[0_u8; 6],
+                        &spa[..],
+                    ];
                     let mut k = 0;
                     for i in 0..arpparts.len() {
                         for j in 0..arpparts[i].len() {
@@ -257,12 +258,14 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                             k = k + 1;
                         }
                     }
+                    // let _ = writeln!(uart, "wrote {k} bytes to ARP packet");
 
-                    let mut eth_arp_frame = [0_u8; 14 + 52 + 4];
+                    let mut eth_arp_frame = [0_u8; 64]; // Minimum ethernet frame length
                     let eth_arp_parts = [
                         &enetheader.to_be_bytes()[..],
                         &arpresponse[..],
-                        &[0_u8; 4][..] // Empty ethernet checksum to be populated by the crc peripheral
+                        // &[0_u8; 64 - 14 - 28 - 4], // Padding to reach minimum frame size
+                        // &[0_u8; 4][..], // Empty ethernet checksum to be populated by the crc peripheral
                     ];
                     let mut k = 0;
                     for i in 0..eth_arp_parts.len() {
@@ -278,7 +281,6 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                         Ok(_) => writeln!(uart, "Sent ARP response"),
                         Err(x) => writeln!(uart, "Ethernet TX error: {:?}", x),
                     };
-
                 } else {
                     continue;
                 }

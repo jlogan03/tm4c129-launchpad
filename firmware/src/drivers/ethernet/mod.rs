@@ -173,7 +173,7 @@ impl EthernetDriver {
 
         // Assumptions
         self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
-        // self.emac.cc.modify(|_, w| ); // Use internal PHY (disable external)
+                                                            // self.emac.cc.modify(|_, w| ); // Use internal PHY (disable external)
         self.emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
         self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
         self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
@@ -218,6 +218,12 @@ impl EthernetDriver {
             self.emac
                 .addr0l
                 .modify(|_, w| w.addrlo().bits(addr[0] as u32));
+        }
+
+        // Set source-address replacement using mac address 0 (the source address field exists in provided frames, but will be overwritten by the MAC)
+        // This has to be done manually because svd2rust doesn't break out the SADDR field for some reason
+        unsafe {
+            self.emac.cfg.modify(|r, w| w.bits(r.bits() | 0x03 << 28));
         }
 
         // Burst transfer limits
@@ -515,11 +521,11 @@ impl EthernetDriver {
     }
 
     /// Do a soft reset of the EMAC and DMA.
-    /// 
+    ///
     /// This may loop indefinitely if the EMAC fails to come out of reset.
     pub fn emac_reset(&mut self) {
-        self.emac.dmabusmod.modify(|_, w| {w.swr().set_bit()});
-        while self.emac.dmabusmod.read().swr().bit_is_set() {};
+        self.emac.dmabusmod.modify(|_, w| w.swr().set_bit());
+        while self.emac.dmabusmod.read().swr().bit_is_set() {}
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes

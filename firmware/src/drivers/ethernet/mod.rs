@@ -1,8 +1,7 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
-pub mod rdes;
-pub mod socket;
-pub mod tdes; // TX descriptor ring definitions // RX ...
+pub mod tdes; // TX descriptor ring definitions
+pub mod rdes; // RX ...
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
@@ -173,7 +172,6 @@ impl EthernetDriver {
 
         // Assumptions
         self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
-                                                            // self.emac.cc.modify(|_, w| ); // Use internal PHY (disable external)
         self.emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
         self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
         self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
@@ -529,7 +527,11 @@ impl EthernetDriver {
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes
-    pub fn transmit<const N: usize>(&mut self, data: [u8; N], cic: Option<TDES0>) -> Result<(), EthernetError> {
+    pub fn transmit<const N: usize>(
+        &mut self,
+        data: [u8; N],
+        cic: Option<TDES0>,
+    ) -> Result<(), EthernetError> {
         // Check if data fits in buffer
         if N > TXBUFSIZE / 4 {
             return Err(EthernetError::BufferOverflow);
@@ -546,7 +548,7 @@ impl EthernetDriver {
                     // We own the current descriptor; load our data into the buffer and tell the DMA to send it
                     //    Clear checksum insertion control field
                     let mut tdes = self.txdl.tdesref.read_volatile();
-                    tdes.v[0] &= !(0b11 << 22);  // Clear bits 22 and 23 of TDES0
+                    tdes.v[0] &= !(0b11 << 22); // Clear bits 22 and 23 of TDES0
                     self.txdl.tdesref.write_volatile(tdes);
                     //    Load data into buffer
                     let mut _buffer: *mut [u8; N] = self.txdl.get_buffer_pointer() as *mut [u8; N];
@@ -555,11 +557,11 @@ impl EthernetDriver {
                     self.txdl.set_buffer_size(N as u16);
                     //    Set common settings
                     self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-                    //    Set checksum insertion control for IP/UDP if it is provided
+                                                      //    Set checksum insertion control for IP/UDP if it is provided
                     if let Some(x) = cic {
                         self.txdl.set_tdes0(x); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
                     }
-                                                         // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
+                    // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
                     self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
                     self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
@@ -725,21 +727,3 @@ pub enum EthernetError {
     /// Nothing to receive from RX descriptor buffers
     NothingToReceive,
 }
-
-// impl fmt::Debug for EthernetDriver {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         // f.debug_struct("TX Descriptor List").field("\nStart Address", &self.txdladdr).finish()
-//         unsafe {
-//             write!(
-//                 f,
-//                 "
-//             Ethernet Controller
-//             ------------------
-//             Root Descriptor Address: {}
-//                 ",
-//                 self.txdladdr as usize,
-
-//             )
-//         }
-//     }
-// }

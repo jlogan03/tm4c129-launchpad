@@ -3,6 +3,7 @@
 #![no_std]
 #![warn(dead_code)]
 #![deny(missing_docs)]
+#![feature(generic_const_exprs)]
 
 // In release mode, cause linker error if panic is possible
 // Developing with panic-never can be difficult because it does not indicate *where*
@@ -19,4 +20,3 @@ pub mod board;
 pub mod startup;
 pub mod drivers;
 pub mod builtins;
-

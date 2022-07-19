@@ -3,11 +3,14 @@
 use cortex_m;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 
-use board;
+use super::board;
 use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
 
+#[cfg(debug_assertions)]
 use core::fmt::Write;
 
+// This function must be implemented by the application that uses the crate
+// and is the entry-point for that application after board initialization
 extern "Rust" {
     fn stellaris_main(board: board::Board);
 }
@@ -32,7 +35,7 @@ unsafe fn call_main() -> ! {
 /// other exception mechanism. HardFaults have a fixed priority of -1, meaning
 /// they have higher priority than any exception with configurable priority.
 #[exception]
-unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
+unsafe fn HardFault(_sf: &ExceptionFrame) -> ! {
     // Need ITM support for this to work
     // iprintln!("EXCEPTION {:?} @ PC=0x{:08x}", Exception::active(), sf.pc);
 
@@ -53,11 +56,9 @@ unsafe fn HardFault(sf: &ExceptionFrame) -> ! {
 
     // Debug formatter can panic, so this can't be run with panic_never
     #[cfg(debug_assertions)]
-    writeln!(uart, "SF: {:?}", sf).unwrap_or_default();
+    writeln!(uart, "SF: {:?}", _sf).unwrap_or_default();
 
-    cortex_m::asm::bkpt();
-
-    loop {}
+    board::safe();
 }
 
 /// A Non Maskable Interrupt (NMI) can be signalled by a peripheral or

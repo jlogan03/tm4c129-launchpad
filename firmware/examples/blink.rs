@@ -1,5 +1,4 @@
 //! A blinky-LED example application
-//! This example uses launchpad-rs.
 
 #![no_std]
 #![no_main]
@@ -10,15 +9,15 @@ extern crate tm4c129x_hal;
 
 use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use embedded_hal::digital::v2::*;  // GPIO set high/low
 use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
 use tm4c129_launchpad::board;
 
 #[no_mangle]
-pub fn stellaris_main(mut board: board::Board) {
+pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut pins_a = board.GPIO_PORTA_AHB.split(&board.power_control);
     let mut uart = serial::Serial::uart0(
         board.UART0,
@@ -31,10 +30,7 @@ pub fn stellaris_main(mut board: board::Board) {
         board::clocks(),
         &board.power_control,
     );
-    let mut delay = tm4c129x_hal::delay::Delay::new(
-        board.core_peripherals.SYST,
-        board::clocks(),
-    );
+    let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
     uart.write_all("Welcome to Launchpad Blink\n");
     let mut loops = 0;
@@ -42,8 +38,10 @@ pub fn stellaris_main(mut board: board::Board) {
         // Spam serial
         writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
         while let Ok(ch) = uart.read() {
+            // Echo
             writeln!(uart, "byte read {}", ch).unwrap_or_default();
         }
+
         loops = loops + 1;
 
         if *(&(board.button0).is_low().unwrap_or_default()) {
@@ -68,6 +66,5 @@ pub fn stellaris_main(mut board: board::Board) {
             let _ = &(board.led0).set_high().unwrap_or_default();
             delay.delay_ms(250u32);
         }
-
     }
 }

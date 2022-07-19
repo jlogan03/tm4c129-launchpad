@@ -1,13 +1,14 @@
 //! Hardware definitions capturing the configuration of the board
-
-pub use super::startup;
-
 use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
-    Clocks, CrystalFrequency, Oscillator, PllOutputFrequency, SysctlExt, SystemClock,
+    control_power, reset, Clocks, CrystalFrequency, Domain, Oscillator, PllOutputFrequency,
+    PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
 };
 use tm4c129x_hal::time::Hertz;
+
+use crate::drivers;
+use crate::drivers::ethernet::{EmacR, EphyR, EthernetDriver};
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -21,10 +22,11 @@ pub enum Button {
 /// Hardware definitions for the TM4C129-XL Launchpad board
 #[allow(non_snake_case)]
 pub struct Board {
-    /// The core peripherals on the LM4F120 / TM4C1233
+    /// The core peripherals on the TM4C129x
     pub core_peripherals: tm4c129x_hal::CorePeripherals,
-    /// Power gating for peripherals in the LM4F120 / TM4C1233
+    /// Power gating for peripherals in the TM4C129x
     pub power_control: tm4c129x_hal::sysctl::PowerControl,
+
     /// LED D1
     pub led0: PN1<Output<PushPull>>,
     /// LED D2
@@ -45,6 +47,9 @@ pub struct Board {
     pub portn_control: tm4c129x_hal::gpio::gpion::GpioControl,
     /// GPIO control for GPIO port J
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
+
+    /// EMAC driver
+    pub enet: EthernetDriver,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -177,8 +182,8 @@ pub struct Board {
     pub UDMA: tm4c129x_hal::tm4c129x::UDMA,
     #[doc = "EPI0"]
     pub EPI0: tm4c129x_hal::tm4c129x::EPI0,
-    #[doc = "EMAC0"]
-    pub EMAC0: tm4c129x_hal::tm4c129x::EMAC0,
+    // #[doc = "EMAC0"]
+    // pub EMAC0: tm4c129x_hal::tm4c129x::EMAC0,  // Consumed by EMACDriver
 }
 
 /// Clock speed defaults
@@ -193,7 +198,7 @@ pub fn clocks() -> &'static Clocks {
 }
 
 impl Board {
-    // Initialize peripherals and
+    // Initialize peripherals
     pub(crate) fn new() -> Board {
         let core_peripherals = match tm4c129x_hal::CorePeripherals::take() {
             Some(x) => x,
@@ -215,9 +220,10 @@ impl Board {
         }
 
         // Clocks
+        let system_clk_freq = PllOutputFrequency::_120mhz;
         sysctl.clock_setup.oscillator = Oscillator::Main(
             CrystalFrequency::_25mhz,
-            SystemClock::UsePll(PllOutputFrequency::_120mhz),
+            SystemClock::UsePll(system_clk_freq),
         );
         unsafe {
             CLOCKS = sysctl.clock_setup.freeze();
@@ -236,6 +242,33 @@ impl Board {
         let button0 = pins_gpioj.pj0.into_pull_up_input();
         let button1 = pins_gpioj.pj1.into_pull_up_input();
 
+        // Ethernet
+        // Note the portions that use the power_control lock introduce a panic branch if they are run from
+        // another module, so they must be run directly here or passed as a closure until the compiler/linker
+        // get better at eliminating unreachable panic branches.
+        //     Power-on and enable EMAC0 and EPHY0 peripherals
+        emac_enable(&sysctl.power_control);
+        //     Get MAC address from read-only memory
+        let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
+        //     Initialize EMAC driver
+        let enet: EthernetDriver = EthernetDriver::new(
+            &sysctl.power_control,
+            |pc| ephy_reset_power(pc),
+            peripherals.EMAC0,
+            system_clk_freq,
+            src_macaddr,
+            true,
+            drivers::ethernet::PreambleLength::_7,
+            drivers::ethernet::InterFrameGap::_96,
+            drivers::ethernet::BackOffLimit::_1024,
+            true,
+            true,
+            drivers::ethernet::TXThresholdDMA::_32,
+            drivers::ethernet::RXThresholdDMA::_32,
+            drivers::ethernet::BurstSizeDMA::_4,
+            drivers::ethernet::BurstSizeDMA::_4,
+        );
+
         Board {
             core_peripherals,
             power_control: sysctl.power_control,
@@ -252,6 +285,9 @@ impl Board {
             portf_control: pins_gpiof.control,
             portn_control: pins_gpion.control,
             portj_control: pins_gpioj.control,
+
+            enet,
+
             // ----------------------------------
             WATCHDOG0: peripherals.WATCHDOG0,
             WATCHDOG1: peripherals.WATCHDOG1,
@@ -323,20 +359,13 @@ impl Board {
             FLASH_CTRL: peripherals.FLASH_CTRL,
             UDMA: peripherals.UDMA,
             EPI0: peripherals.EPI0,
-            EMAC0: peripherals.EMAC0,
+            // EMAC0: peripherals.EMAC0,
         }
     }
 }
 
-#[cfg(debug_assertions)]
-/// Panic handler
-pub fn panic() -> ! {
-    let _ = safe();
-    loop {} // Inaccessible, but required to demonstrate that the function can never return
-}
-
 /// Unrecoverable error; cycle LEDs until reset
-pub fn safe() -> () {
+pub fn safe() -> ! {
     use embedded_hal::blocking::delay::DelayMs;
     let core_peripherals = unsafe { tm4c129x_hal::CorePeripherals::steal() };
     let p = unsafe { tm4c129x_hal::Peripherals::steal() };
@@ -350,4 +379,40 @@ pub fn safe() -> () {
         let _ = led0.set_low().unwrap_or_default();
         delay.delay_ms(200u32);
     }
+}
+
+/// Reset EMAC, then wait until it shows ready status
+fn emac_reset_power(power_control: &PowerControl) -> EmacR {
+    //   Get a handle to sysctl to check ready status
+    let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
+    // Reset EMAC, then wait until SYSCTL sets ready status
+    reset(power_control, Domain::Emac0);
+    loop {
+        if p.premac.read().r0().bit_is_set() {
+            let emacr: EmacR = EmacR {};
+            return emacr;
+        }
+    }
+}
+
+/// Reset EPHY, then wait until it shows ready status
+fn ephy_reset_power(power_control: &PowerControl) -> EphyR {
+    //   Get a handle to sysctl to check ready status
+    let p = unsafe { &*tm4c129x_hal::tm4c129x::SYSCTL::ptr() };
+    //   Reset EPHY, then wait until SYSCTL sets ready status
+    reset(power_control, Domain::Ephy0);
+    loop {
+        if p.prephy.read().r0().bit_is_set() {
+            let ephyr: EphyR = EphyR {};
+            return ephyr;
+        }
+    }
+}
+
+/// Power-on and reset EMAC then EPHY
+pub fn emac_enable(power_control: &PowerControl) {
+    control_power(power_control, Domain::Emac0, RunMode::Run, PowerState::On);
+    emac_reset_power(power_control);
+    control_power(power_control, Domain::Ephy0, RunMode::Run, PowerState::On);
+    ephy_reset_power(power_control);
 }

@@ -4,10 +4,13 @@ An example program for the TM4C129-XL Launchpad board, based on the [stellaris-l
 
 ## Requirements
 
+* rustc components (for cross-compiling)
 * arm-none-eabi-* (ARM Embedded Toolchain for compiler)
+* libusb-1.0-0-dev (for lm4tools)
 * lm4tools (serial interface to Launchpad bootloader)
+* TI drivers for the in-circuit debugger (to connect to the board's UART via USB)
 
-The process described here works on Linux and Mac, but has not been tested on Windows.
+The process described here works (with some offroading) on Linux and Mac, but has not been tested on Windows.
 
 ## Setup
 
@@ -28,7 +31,20 @@ export PATH="$PATH:/Applications/ARM/bin/"
 ### lm4tools
 lm4tools provides a serial interface to the Stellaris bootloader on the launchpad board.
 
-Clone https://github.com/utzig/lm4tools and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
+First, get libusb.
+```bash
+# Mac
+brew install libusb
+```
+```bash
+# Ubuntu (note the generic libusb-dev package is broken! must install specific version)
+sudo apt install libusb-1.0-0-dev
+```
+
+Clone https://github.com/uastw-embsys/lm4tools (or one of the 40+ other forks of lm4tools) and run **make** to build the binaries. Then, similar to the ARM toolchain, you can add another line to your bash run command file to get the lm4flash binary into your path, or just reference its path manually with each use.
+
+### TI Drivers
+Follow the instructions at https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html to install the latest version of the USB drivers.
 
 
 ## Compile and flash
@@ -61,9 +77,5 @@ On Ubuntu,```ls -l /dev/serial/by-id``` will show which device is associated wit
 Figuring out which serial port it is can be tedious on a Mac. Just watch ```ls /dev/tty*``` while plugging/unplugging the board a few times.
 
 # Future Plans
-
-* Drivers for EMAC and EPI
-* UDP ethernet example
-* I2C example
 * Maybe-possibly hardware-out-of-the-loop testing using QEMU
-* Definitely hardware-in-the-loop testing using a self-hosted github-actions runner (probably a raspberry pi on a shelf in my apartment) with some kind of unlocking procedure to keep the board from being bricked during testing
+* Definitely hardware-in-the-loop testing using a self-hosted github-actions runner (probably a raspberry pi on a shelf in my apartment) with an unlocking procedure to keep the board from being bricked during testing

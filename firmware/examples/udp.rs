@@ -11,14 +11,13 @@ use core::fmt::Write;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use tm4c129_launchpad::drivers::ethernet::tdes::TDES0;
 use tm4c129x_hal::gpio::gpioa::{PA0, PA1};
 use tm4c129x_hal::gpio::{AlternateFunction, GpioExt, PushPull, AF1};
 use tm4c129x_hal::serial;
 use tm4c129x_hal::serial::*;
 use tm4c129x_hal::time::Bps;
 
-use catnip::{IPV4Addr, MACAddr};
+use catnip::{*, enet::*, arp::*};
 use tm4c129_launchpad::{
     board,
     drivers::ethernet::{socket::UDPSocket, EthernetError, RXBUFSIZE},
@@ -41,29 +40,18 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
     let udp = UDPSocket {
-        src_macaddr: MACAddr {
-            value: board.enet.src_macaddr,
-        },
-        src_ipaddr: IPV4Addr {
-            value: [10, 0, 0, 229],
-        },
+        src_macaddr: MacAddr::new(board.enet.src_macaddr),
+        src_ipaddr: IpV4Addr::new([10, 0, 0, 229]),
         src_port: 8052,
-        dst_macaddr: Some(MACAddr {
-            value: [0xFF_u8; 6], // Ethernet broadcast required for IP packets
-        }),
-        dst_ipaddr: IPV4Addr {
-            value: [10, 0, 0, 127],
-        },
-        // dst_ipaddr: IPV4Addr {
-        //     value: [0, 0, 0, 0],
-        // },
+        dst_macaddr: MacAddr::ANY, // Ethernet broadcast required for IP packets
+        dst_ipaddr: IpV4Addr::new([10, 0, 0, 127]),
         dst_port: 8053,
     };
 
     let mut loops = 0;
     let mut led_state = 0;
 
-    let mut writemac = |u: &mut Serial<
+    let writemac = |u: &mut Serial<
         UART0,
         PA1<AlternateFunction<AF1, PushPull>>,
         PA0<AlternateFunction<AF1, PushPull>>,
@@ -80,7 +68,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         let _ = writeln!(u, "");
     };
 
-    let mut writeip = |u: &mut Serial<
+    let writeip = |u: &mut Serial<
         UART0,
         PA1<AlternateFunction<AF1, PushPull>>,
         PA0<AlternateFunction<AF1, PushPull>>,
@@ -150,22 +138,22 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 let offs = untagged; // Assume untagged eth header length
 
                 // Handle vlan
-                if ethertype == 0x8100 {
-                    // VLAN tagged
-                    tpibytes.copy_from_slice(&b[12..=13]);
-                    tpi = u16::from_be_bytes(etbytes);
+                // if ethertype == 0x8100 {
+                //     // VLAN tagged
+                //     tpibytes.copy_from_slice(&b[12..=13]);
+                //     tpi = u16::from_be_bytes(etbytes);
 
-                    vidbytes.copy_from_slice(&b[14..=15]);
-                    vid = u16::from_be_bytes(vidbytes) & 0b0000_1111_1111_1111;
+                //     vidbytes.copy_from_slice(&b[14..=15]);
+                //     vid = u16::from_be_bytes(vidbytes) & 0b0000_1111_1111_1111;
 
-                    etbytes.copy_from_slice(&b[16..=17]);
-                    ethertype = u16::from_be_bytes(etbytes);
+                //     etbytes.copy_from_slice(&b[16..=17]);
+                //     ethertype = u16::from_be_bytes(etbytes);
 
-                    let _ = writeln!(uart, "    VLAN TPI: 0x{tpi:x}");
-                    let _ = writeln!(uart, "    VLAN VID: {vid}");
-                }
+                //     let _ = writeln!(uart, "    VLAN TPI: 0x{tpi:x}");
+                //     let _ = writeln!(uart, "    VLAN VID: {vid}");
+                // }
 
-                let _ = writeln!(uart, "    ethertype: 0x{ethertype:x}");
+                // let _ = writeln!(uart, "    ethertype: 0x{ethertype:x}");
 
                 if ethertype == 0x800 {
                     // IPV4 packet
@@ -227,61 +215,23 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                     writeip(&mut uart, "    ARP target protocol address: ", &tpa);
 
                     // Send an ARP response
-                    let enetheader = catnip::enet::EthernetHeader::new(
-                        MACAddr {
-                            value: board.enet.src_macaddr,
+                    let eth_arp_frame = EthernetFrame::<ArpPayload> {
+                        header: EthernetHeader {
+                            dst_macaddr: MacAddr::ANY, // Ethernet broadcast
+                            src_macaddr: udp.src_macaddr,
+                            ethertype: EtherType::ARP,
                         },
-                        Some(MACAddr {
-                            value: [0xFF_u8; 6], // Ethernet broadcast required for IP packets
-                        }),
-                        catnip::EtherType::ARP,
-                    );
+                        data: ArpPayload::new(
+                            udp.src_macaddr,
+                            udp.src_ipaddr,
+                            MacAddr::new(sha),
+                            IpV4Addr::new(spa),
+                            ArpOperation::Response
+                        ),
+                        checksum: 0
+                    };
 
-                    let mut arpresponse = [0_u8; 46];  // 28 bytes padded to ethernet minimum payload size
-                    let arpparts = [
-                        &1_u16.to_be_bytes()[..],     // hardware type ethernet
-                        &0x800_u16.to_be_bytes()[..], // IPV4 protocol
-                        &[6_u8][..],                  // 6 byte mac addresses
-                        &[4_u8][..],                  // 4 byte ip addresses
-                        &2_u16.to_be_bytes()[..],     // Operation type: 1 => request, 2 => response
-                        &board.enet.src_macaddr[..],
-                        &udp.src_ipaddr.value[..],
-                        &sha[..],
-                        // &[0_u8; 6],
-                        // &[0_u8; 4],
-                        &spa[..],
-                    ];
-                    let mut k = 0;
-                    for i in 0..arpparts.len() {
-                        for j in 0..arpparts[i].len() {
-                            if k < arpresponse.len() {
-                                arpresponse[k] = arpparts[i][j];
-                            }
-                            k = k + 1;
-                        }
-                    }
-                    let _ = writeln!(uart, "wrote {k} bytes to ARP packet");
-                    let byte = arpresponse[5];
-                    let _ = writeln!(uart, "byte = {byte}");
-
-                    let mut eth_arp_frame = [0_u8; 64]; // Minimum ethernet frame length
-                    let eth_arp_parts = [
-                        &enetheader.to_be_bytes()[..],
-                        &arpresponse[..],
-                        // &[0_u8; 64 - 14 - 28 - 4], // Padding to reach minimum frame size
-                        // &[0_u8; 4][..], // Empty ethernet checksum to be populated by the crc peripheral
-                    ];
-                    let mut k = 0;
-                    for i in 0..eth_arp_parts.len() {
-                        for j in 0..eth_arp_parts[i].len() {
-                            if k < eth_arp_frame.len() {
-                                eth_arp_frame[k] = eth_arp_parts[i][j];
-                            }
-                            k = k + 1;
-                        }
-                    }
-
-                    match board.enet.transmit(eth_arp_frame, None) {  // Do not insert IP/UDP checksums for ARP packet
+                    match board.enet.transmit(eth_arp_frame.to_be_bytes(), None) {  // Do not insert IP/UDP checksums for ARP packet
                         Ok(_) => writeln!(uart, "Sent ARP response"),
                         Err(x) => writeln!(uart, "Ethernet TX error: {:?}", x),
                     };
@@ -294,7 +244,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         };
 
         // Test UDP transmit
-        match udp.transmit::<6>(&mut board.enet, *b"hello world! ... ... ...") {
+        match udp.transmit(&mut board.enet, *b"hello world! ... ... ...") {
             Ok(_) => (), //writeln!(uart, "UDP transmit started").unwrap_or_default(),
             Err(x) => writeln!(uart, "UDP TX error: {:?}", x).unwrap_or_default(),
         };
@@ -307,7 +257,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 writeln!(uart, "byte read {}", ch).unwrap_or_default();
 
                 // Show MAC address
-                let addr = udp.src_macaddr.value;
+                let addr = udp.src_macaddr.0;
                 writeln!(
                     uart,
                     "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",

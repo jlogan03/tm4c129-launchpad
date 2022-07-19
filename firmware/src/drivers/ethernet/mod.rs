@@ -2,6 +2,7 @@
 
 pub mod tdes; // TX descriptor ring definitions
 pub mod rdes; // RX ...
+pub mod socket;  // UDP socket
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},

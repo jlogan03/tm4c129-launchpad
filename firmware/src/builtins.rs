@@ -27,3 +27,9 @@ pub extern "C" fn _Unwind_Resume() -> () {
 fn panic(_info: &PanicInfo) -> ! {
     board::safe();
 }
+
+// In release mode, cause linker error if panic is possible
+// Developing with panic-never can be difficult because it does not indicate *where*
+// a panicking branch exists, but the benefit to reliability is well worth the struggle.
+#[cfg(not(debug_assertions))]
+use panic_never as _;

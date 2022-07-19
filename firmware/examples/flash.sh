@@ -8,6 +8,6 @@ cargo build --example $1 --release
 # Convert binary
 arm-none-eabi-objcopy -O binary $INFILE $OUTFILE
 # Flash
-sudo $LM4FLASH $OUTFILE
+sudo lm4flash $OUTFILE
 # Show binary size
 ls -lh $OUTFILE

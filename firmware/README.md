@@ -4,7 +4,7 @@ An example program for the TM4C129-XL Launchpad board, based on the [stellaris-l
 
 ## Requirements
 
-* rustc components (for cross-compiling)
+* rustc components (for cross-compiling and linking modifications)
 * arm-none-eabi-* (ARM Embedded Toolchain for compiler)
 * libusb-1.0-0-dev (for lm4tools)
 * lm4tools (serial interface to Launchpad bootloader)
@@ -18,6 +18,7 @@ The process described here works (with some offroading) on Linux and Mac, but ha
 ```bash
 rustup component add rust-src
 rustup target add thumbv7em-none-eabihf
+cargo install flip-link
 ```
 
 ### ARM Embedded Toolchain
@@ -28,8 +29,11 @@ Add the binaries to path however you like; on mac, you can add a line to your ~/
 export PATH="$PATH:/Applications/ARM/bin/"
 ```
 
+### Flip-link
+This crate is configured to use flip-link to prevent stack overflow from corrupting the program. See https://crates.io/crates/flip-link .
+
 ### lm4tools
-lm4tools provides a serial interface to the Stellaris bootloader on the launchpad board.
+lm4tools provides a serial interface to the Stellaris bootloader on the launchpad board, in combination with the USB drivers from TI. Not all forks of lm4tools include unlocking capability, but the one recommended here does, and has worked consistently.
 
 First, get libusb.
 ```bash
@@ -77,5 +81,6 @@ On Ubuntu,```ls -l /dev/serial/by-id``` will show which device is associated wit
 Figuring out which serial port it is can be tedious on a Mac. Just watch ```ls /dev/tty*``` while plugging/unplugging the board a few times.
 
 # Future Plans
-* Maybe-possibly hardware-out-of-the-loop testing using QEMU
-* Definitely hardware-in-the-loop testing using a self-hosted github-actions runner (probably a raspberry pi on a shelf in my apartment) with an unlocking procedure to keep the board from being bricked during testing
+* Better network interface 
+* DHCP-inform capability for static addressing on DHCP-managed networks
+* Hardware-in-the-loop testing using a self-hosted github-actions runner (probably a raspberry pi on a shelf) with an unlocking procedure to keep the board from being bricked during testing.

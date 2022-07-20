@@ -17,7 +17,7 @@ use tm4c129x_hal::serial;
 use tm4c129x_hal::serial::*;
 use tm4c129x_hal::time::Bps;
 
-use catnip::{*, enet::*, arp::*};
+use catnip::{arp::*, enet::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
     drivers::ethernet::{socket::UDPSocket, EthernetError, RXBUFSIZE},
@@ -51,191 +51,100 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut loops = 0;
     let mut led_state = 0;
 
-    let writemac = |u: &mut Serial<
-        UART0,
-        PA1<AlternateFunction<AF1, PushPull>>,
-        PA0<AlternateFunction<AF1, PushPull>>,
-        (),
-        (),
-    >,
-                        prefix: &str,
-                        v: &[u8; 6]| {
-        // let _ = writeln!(uart, "");
-        let _ = write!(u, "{prefix}");
+    fn writemac<T: Write>(u: &mut T, prefix: &str, v: &[u8; 6]) -> () {
+        write!(u, "{prefix}").unwrap_or_default();
         for x in *v {
-            let _ = write!(u, "{x:x} ");
+            write!(u, "{x:x} ").unwrap_or_default();
         }
-        let _ = writeln!(u, "");
-    };
+        writeln!(u, "").unwrap_or_default();
+    }
 
-    let writeip = |u: &mut Serial<
-        UART0,
-        PA1<AlternateFunction<AF1, PushPull>>,
-        PA0<AlternateFunction<AF1, PushPull>>,
-        (),
-        (),
-    >,
-                       prefix: &str,
-                       v: &[u8; 4]| {
-        // let _ = writeln!(uart, "");
-        let _ = write!(u, "{prefix}");
+    fn writeip<T: Write>(u: &mut T, prefix: &str, v: &[u8; 4]) -> () {
+        write!(u, "{prefix}").unwrap_or_default();
         for x in *v {
-            let _ = write!(u, "{x} ");
+            write!(u, "{x:x} ").unwrap_or_default();
         }
-        let _ = writeln!(u, "");
-    };
+        writeln!(u, "").unwrap_or_default();
+    }
 
     let mut b = [0_u8; RXBUFSIZE];
 
     // Eth
-    let mut srcmac = [0_u8; 6];
-    let mut dstmac = [0_u8; 6];
-    let mut srcip = [0_u8; 4];
-    let mut dstip = [0_u8; 4];
-    let mut ethertype = 0_u16;
-    let mut tpi = 0_u16;
-    let mut vid = 0_u16;
-    let mut tpibytes = [0_u8; 2];
-    let mut vidbytes = [0_u8; 2];
-    let mut etbytes = [0_u8; 2];
-
-    const untagged: usize = 14;
-    const tagged: usize = 18;
+    let mut ethernet_header: EthernetHeader;
 
     // IP
-    let mut protocol = 0_u8;
-    let mut ippacketlen = [0_u8; 2];
-    let mut version = 0_u8;
-    let mut ipheaderlen = 14_u8;
+    const ipstart: usize = EthernetHeader::BYTE_LEN;
+    let mut ipheader: IpV4Header;
+
+    // UDP
+    const udpstart: usize = ipstart + IpV4Header::BYTE_LEN;
+    let mut udpheader: UdpHeader;
 
     // ARP
-    let mut htypebytes = [0_u8; 2];
-    let mut ptypebytes = [0_u8; 2];
-    let mut operbytes = [0_u8; 2];
-    let mut sha = [0_u8; 6];
-    let mut spa = [0_u8; 4];
-    let mut tha = [0_u8; 6];
-    let mut tpa = [0_u8; 4];
-    let mut arppacket = [0_u8; 28];
+    const arpstart: usize = ipstart;
+    let mut arp_incoming: ArpPayload;
+    let mut arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+        header: EthernetHeader {
+            dst_macaddr: MacAddr::ANY, // Ethernet broadcast
+            src_macaddr: udp.src_macaddr,
+            ethertype: EtherType::ARP,
+        },
+        data: ArpPayload::new(
+            udp.src_macaddr,
+            udp.src_ipaddr,
+            MacAddr::ANY,
+            IpV4Addr::ANY,
+            ArpOperation::Response,
+        ),
+        checksum: 0,
+    };
 
     loop {
         // Test ethernet receive (without UDP socket)
         match &board.enet.receive(&mut b) {
             Ok(num_bytes) => {
                 // We received ethernet data
-                let _ = writeln!(uart, "Received {num_bytes} ethernet bytes");
+                writeln!(uart, "Received {num_bytes} ethernet bytes").unwrap_or_default();
 
                 // Ethernet header
-                dstmac.copy_from_slice(&b[0..=5]);
-                srcmac.copy_from_slice(&b[6..=11]);
+                ethernet_header = EthernetHeader::read_bytes(&b);
 
-                etbytes.copy_from_slice(&b[12..=13]);
-                ethertype = u16::from_be_bytes(etbytes);
+                writemac(&mut uart, "    src macaddr: ", &ethernet_header.src_macaddr);
+                writemac(&mut uart, "    dst macaddr: ", &ethernet_header.dst_macaddr);
+                writeln!(uart, "Ethertype: {:x}", ethernet_header.ethertype as u16);
 
-                writemac(&mut uart, "    src macaddr: ", &srcmac);
-                writemac(&mut uart, "    dst macaddr: ", &dstmac);
-
-                let offs = untagged; // Assume untagged eth header length
-
-                // Handle vlan
-                // if ethertype == 0x8100 {
-                //     // VLAN tagged
-                //     tpibytes.copy_from_slice(&b[12..=13]);
-                //     tpi = u16::from_be_bytes(etbytes);
-
-                //     vidbytes.copy_from_slice(&b[14..=15]);
-                //     vid = u16::from_be_bytes(vidbytes) & 0b0000_1111_1111_1111;
-
-                //     etbytes.copy_from_slice(&b[16..=17]);
-                //     ethertype = u16::from_be_bytes(etbytes);
-
-                //     let _ = writeln!(uart, "    VLAN TPI: 0x{tpi:x}");
-                //     let _ = writeln!(uart, "    VLAN VID: {vid}");
-                // }
-
-                // let _ = writeln!(uart, "    ethertype: 0x{ethertype:x}");
-
-                if ethertype == 0x800 {
+                if ethernet_header.ethertype as u16 == 0x800 {
                     // IPV4 packet
-                    let _ = writeln!(uart, "  IP packet");
-                    srcip.copy_from_slice(&b[offs + 12..=offs + 15]);
-                    dstip.copy_from_slice(&b[offs + 16..=offs + 19]);
-                    protocol = (&b)[offs + 9];
-                    ippacketlen.copy_from_slice(&b[offs + 2..=offs + 3]);
-                    let iplen_u16 = u16::from_be_bytes(ippacketlen);
-                    version = (b[offs] & 0b1111_0000) >> 4;
-                    ipheaderlen = b[offs] & 0b0000_1111_u8;
-
-                    writeip(&mut uart, "    src ipaddr: ", &srcip);
-                    writeip(&mut uart, "    dst ipaddr: ", &dstip);
-                    let _ = writeln!(uart, "    Protocol: {protocol}");
-                    let _ = writeln!(uart, "    IP version: {version}");
-                    let _ = writeln!(uart, "    IP header length: {ipheaderlen} words");
-                    let _ = writeln!(uart, "    IP packet length: {iplen_u16} bytes");
+                    writeln!(uart, "  IP packet").unwrap_or_default();
+                    ipheader = IpV4Header::read_bytes(&b[EthernetHeader::BYTE_LEN..]);
+                    // writeln!(uart, "{:?}", ipheader).unwrap_or_default();
                     delay.delay_ms(2000u32);
-                } else if ethertype == 0x806 {
+
+                    match ipheader.protocol {
+                        // UDP packet
+                        Protocol::UDP => {
+                            udpheader = UdpHeader::read_bytes(&b[udpstart..]);
+                            // writeln!(uart, "{:?}", udpheader);
+                        }
+                        _ => {}
+                    }
+                } else if ethernet_header.ethertype as u16 == 0x806 {
                     // ARP packet
-                    let _ = writeln!(uart, "  ARP packet");
-                    arppacket.copy_from_slice(&b[offs..offs + 28]);
-
-                    htypebytes.copy_from_slice(&arppacket[0..=1]);
-                    let _ = writeln!(
-                        uart,
-                        "    ARP hardware type: {}",
-                        u16::from_be_bytes(htypebytes)
-                    );
-
-                    ptypebytes.copy_from_slice(&arppacket[2..=3]);
-                    let _ = writeln!(
-                        uart,
-                        "    ARP protocol type: 0x{:x}",
-                        u16::from_be_bytes(ptypebytes)
-                    );
-
-                    let _ = writeln!(uart, "    ARP hardware address length: {}", &arppacket[4]);
-                    let _ = writeln!(uart, "    ARP protocol address length: {}", &arppacket[5]);
-
-                    operbytes.copy_from_slice(&arppacket[6..=7]);
-                    let _ = writeln!(
-                        uart,
-                        "    ARP operation type: {}",
-                        u16::from_be_bytes(operbytes)
-                    );
-
-                    sha.copy_from_slice(&arppacket[8..14]);
-                    writemac(&mut uart, "    ARP sender hardware address: ", &sha);
-
-                    spa.copy_from_slice(&arppacket[14..18]);
-                    writeip(&mut uart, "    ARP sender protocol address: ", &spa);
-
-                    tha.copy_from_slice(&arppacket[18..24]);
-                    writemac(&mut uart, "    ARP target harware address: ", &tha);
-
-                    tpa.copy_from_slice(&arppacket[24..28]);
-                    writeip(&mut uart, "    ARP target protocol address: ", &tpa);
+                    writeln!(uart, "  ARP packet").unwrap_or_default();
+                    arp_incoming = ArpPayload::read_bytes(&b[arpstart..]);
+                    // writeln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
 
                     // Send an ARP response
-                    let eth_arp_frame = EthernetFrame::<ArpPayload> {
-                        header: EthernetHeader {
-                            dst_macaddr: MacAddr::ANY, // Ethernet broadcast
-                            src_macaddr: udp.src_macaddr,
-                            ethertype: EtherType::ARP,
-                        },
-                        data: ArpPayload::new(
-                            udp.src_macaddr,
-                            udp.src_ipaddr,
-                            MacAddr::new(sha),
-                            IpV4Addr::new(spa),
-                            ArpOperation::Response
-                        ),
-                        checksum: 0
-                    };
+                    arp_response.data.dst_ipaddr = arp_incoming.src_ipaddr;
+                    arp_response.data.dst_mac = arp_incoming.src_mac;
 
-                    match board.enet.transmit(eth_arp_frame.to_be_bytes(), None) {  // Do not insert IP/UDP checksums for ARP packet
-                        Ok(_) => writeln!(uart, "Sent ARP response"),
-                        Err(x) => writeln!(uart, "Ethernet TX error: {:?}", x),
+                    match board.enet.transmit(arp_response.to_be_bytes(), None) {
+                        // Do not insert IP/UDP checksums for ARP packet
+                        Ok(_) => writeln!(uart, "Sent ARP response").unwrap_or_default(),
+                        Err(x) => writeln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default(),
                     };
                 } else {
+                    // Ignore TCP, etc
                     continue;
                 }
             }
@@ -257,13 +166,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 writeln!(uart, "byte read {}", ch).unwrap_or_default();
 
                 // Show MAC address
-                let addr = udp.src_macaddr.0;
-                writeln!(
-                    uart,
-                    "MAC Address: {:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
-                    addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
-                )
-                .unwrap_or_default();
+                writemac(&mut uart, "Our MAC address: ", &udp.src_macaddr.0);
             }
 
             // Debugging
@@ -275,47 +178,50 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
             // Check EMAC status
             let status = board.enet.emac.status.read().txpaused().bit_is_set();
-            writeln!(uart, "EMAC TX paused? {status}");
+            writeln!(uart, "EMAC TX paused? {status}").unwrap_or_default();
             let status = board.enet.emac.hostxdesc.read().bits();
-            writeln!(uart, "EMAC TX descr addr {status}");
+            writeln!(uart, "EMAC TX descr addr {status}").unwrap_or_default();
             let status = board.enet.emac.hostxba.read().bits();
-            writeln!(uart, "EMAC TX buf addr {status}");
+            writeln!(uart, "EMAC TX buf addr {status}").unwrap_or_default();
             let status = board.enet.emac.txdladdr.read().bits();
-            writeln!(uart, "EMAC TXDL addr {status}");
+            writeln!(uart, "EMAC TXDL addr {status}").unwrap_or_default();
             let status = board.enet.emac.status.read().txfe().bit_is_set();
-            writeln!(uart, "EMAC TX FIFO not empty? {status}");
+            writeln!(uart, "EMAC TX FIFO not empty? {status}").unwrap_or_default();
             let status = board.enet.emac.status.read().twc().bit_is_set();
-            writeln!(uart, "EMAC TX FIFO write controller active? {status}");
+            writeln!(uart, "EMAC TX FIFO write controller active? {status}").unwrap_or_default();
             let status = board.enet.emac.status.read().tpe().bit_is_set();
-            writeln!(uart, "EMAC MII transmit protocol engine status? {status}");
+            writeln!(uart, "EMAC MII transmit protocol engine status? {status}")
+                .unwrap_or_default();
             let status = board.enet.emac.status.read().tfc().variant();
-            writeln!(uart, "EMAC MII transmit frame controller status {status:?}");
+            writeln!(uart, "EMAC MII transmit frame controller status {status:?}")
+                .unwrap_or_default();
             let status = board.enet.emac.dmaris.read().ts().bits();
-            writeln!(uart, "EMAC DMA transmit process state {status:?}");
+            writeln!(uart, "EMAC DMA transmit process state {status:?}").unwrap_or_default();
 
             let status = board.enet.emac.status.read().rrc().bits();
-            writeln!(uart, "EMAC RX FIFO controller state? {status:?}");
+            writeln!(uart, "EMAC RX FIFO controller state? {status:?}").unwrap_or_default();
             let status = board.enet.emac.hosrxdesc.read().bits();
-            writeln!(uart, "EMAC RX descr addr {status}");
+            writeln!(uart, "EMAC RX descr addr {status}").unwrap_or_default();
             let status = board.enet.emac.hosrxba.read().bits();
-            writeln!(uart, "EMAC RX buf addr {status}");
+            writeln!(uart, "EMAC RX buf addr {status}").unwrap_or_default();
             let status = board.enet.emac.rxdladdr.read().bits();
-            writeln!(uart, "EMAC RXDL addr {status}");
+            writeln!(uart, "EMAC RXDL addr {status}").unwrap_or_default();
             let status = board.enet.emac.status.read().rxf().bits();
-            writeln!(uart, "EMAC RX FIFO status? {status:?}");
+            writeln!(uart, "EMAC RX FIFO status? {status:?}").unwrap_or_default();
             let status = board.enet.emac.status.read().rwc().bit_is_set();
-            writeln!(uart, "EMAC RX FIFO write controller active? {status}");
+            writeln!(uart, "EMAC RX FIFO write controller active? {status}").unwrap_or_default();
             let status = board.enet.emac.status.read().rpe().bit_is_set();
-            writeln!(uart, "EMAC MII receive protocol engine status? {status}");
+            writeln!(uart, "EMAC MII receive protocol engine status? {status}").unwrap_or_default();
             let status = board.enet.emac.status.read().rfcfc().bits();
-            writeln!(uart, "EMAC MII receive frame controller status {status:?}");
+            writeln!(uart, "EMAC MII receive frame controller status {status:?}")
+                .unwrap_or_default();
             let status = board.enet.emac.dmaris.read().rs().bits();
-            writeln!(uart, "EMAC DMA receive process state {status:?}");
+            writeln!(uart, "EMAC DMA receive process state {status:?}").unwrap_or_default();
 
             let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
-            writeln!(uart, "EMAC DMA bus error? {status:?}");
+            writeln!(uart, "EMAC DMA bus error? {status:?}").unwrap_or_default();
             let status = board.enet.emac.dmaris.read().ae().bits();
-            writeln!(uart, "EMAC DMA access error type {status:?}\n\n");
+            writeln!(uart, "EMAC DMA access error type {status:?}\n\n").unwrap_or_default();
         }
 
         // board.enet.emacclear(); // Clear clearable interrupts
@@ -327,24 +233,24 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
         if *(&(board.button0).is_low().unwrap_or_default()) {
             // Turn all the LEDs on
-            let _ = &(board.led0).set_high().unwrap_or_default();
-            let _ = &(board.led1).set_high().unwrap_or_default();
-            let _ = &(board.led2).set_high().unwrap_or_default();
-            let _ = &(board.led3).set_high().unwrap_or_default();
+            &(board.led0).set_high().unwrap_or_default();
+            &(board.led1).set_high().unwrap_or_default();
+            &(board.led2).set_high().unwrap_or_default();
+            &(board.led3).set_high().unwrap_or_default();
         } else {
             // Cycle through each of the 4 LEDs
             if led_state == 0 {
-                let _ = &(board.led0).set_low().unwrap_or_default();
-                let _ = &(board.led1).set_high().unwrap_or_default();
+                &(board.led0).set_low().unwrap_or_default();
+                &(board.led1).set_high().unwrap_or_default();
             } else if led_state == 1 {
-                let _ = &(board.led1).set_low().unwrap_or_default();
-                let _ = &(board.led2).set_high().unwrap_or_default();
+                &(board.led1).set_low().unwrap_or_default();
+                &(board.led2).set_high().unwrap_or_default();
             } else if led_state == 2 {
-                let _ = &(board.led2).set_low().unwrap_or_default();
-                let _ = &(board.led3).set_high().unwrap_or_default();
+                &(board.led2).set_low().unwrap_or_default();
+                &(board.led3).set_high().unwrap_or_default();
             } else if led_state == 3 {
-                let _ = &(board.led3).set_low().unwrap_or_default();
-                let _ = &(board.led0).set_high().unwrap_or_default();
+                &(board.led3).set_low().unwrap_or_default();
+                &(board.led0).set_high().unwrap_or_default();
             } else {
                 continue;
             }

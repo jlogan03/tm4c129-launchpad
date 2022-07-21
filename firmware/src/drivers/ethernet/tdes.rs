@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+use ufmt::derive::uDebug;
+
 /// Number of descriptors/buffer segments
 pub const TXDESCRS: usize = 4;
 
@@ -297,7 +299,7 @@ impl fmt::Debug for TXDL {
 /// values within the struct, hence the repr(C).
 ///
 /// See datasheet Figure 23-3 for layout.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(transparent)]
 pub struct TDES {
     /// Content
@@ -306,7 +308,7 @@ pub struct TDES {
 
 /// TX descriptor field masks for the first word (TDES0)
 /// See datasheet Table 23-2
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(u32)]
 pub enum TDES0 {
     // Status flag set by the DMA or the user to transfer ownership
@@ -382,7 +384,7 @@ pub enum TDES0 {
 
 /// TX descriptor field masks for second word (TDES1)
 /// See datasheet table 23-3
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(u32)]
 pub enum TDES1 {
     /// Use MAC address register 1 instead of 0

@@ -9,6 +9,8 @@ use tm4c129x_hal::{
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
+use ufmt::{*, derive::*};
+
 use self::rdes::*;
 pub use self::rdes::{RXBUFSIZE, RXDESCRS};
 
@@ -636,6 +638,7 @@ impl EthernetDriver {
 ///
 /// This is the number of alternating 0-1 bits transmitted at the start of each frame
 /// in order to synchronize clocks between the transmitter and receiver.
+#[derive(uDebug)]
 #[allow(missing_docs)]
 pub enum PreambleLength {
     _3,
@@ -646,6 +649,7 @@ pub enum PreambleLength {
 /// Choices of interframe gap length in bits.
 ///
 /// This is the duration of radio-silence used to signal the end of a transmission frame.
+#[derive(uDebug)]
 #[allow(missing_docs)]
 pub enum InterFrameGap {
     _40,
@@ -662,6 +666,7 @@ pub enum InterFrameGap {
 ///
 /// This is a cap on the rescheduling duration given by the exponential back-off algorithm
 /// in the event of repeated collisions during transmission.
+#[derive(uDebug)]
 #[allow(missing_docs)]
 pub enum BackOffLimit {
     _2,
@@ -673,6 +678,7 @@ pub enum BackOffLimit {
 /// TX memory transfer threshold for memory controller
 ///
 /// This is the number of bytes in the buffer required to trigger a transfer.
+#[derive(uDebug)]
 #[allow(missing_docs)]
 pub enum TXThresholdDMA {
     _16,
@@ -688,6 +694,7 @@ pub enum TXThresholdDMA {
 /// RX memory transfer threshold for memory controller
 ///
 /// This is the number of bytes in the buffer required to trigger a transfer.
+#[derive(uDebug)]
 #[allow(missing_docs)]
 pub enum RXThresholdDMA {
     _32,
@@ -697,6 +704,7 @@ pub enum RXThresholdDMA {
 }
 
 /// RX memory transfer burst size in 32-bit words
+#[derive(uDebug)]
 #[allow(missing_docs)]
 pub enum BurstSizeDMA {
     // Settings that do not require 8x flag
@@ -717,7 +725,7 @@ pub enum BurstSizeDMA {
 }
 
 /// Ethernet driver errors
-#[derive(Debug)]
+#[derive(Debug, uDebug)]
 pub enum EthernetError {
     /// Data too large for buffer
     BufferOverflow,

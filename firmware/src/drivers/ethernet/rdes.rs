@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+use ufmt::{*, derive::*};
+
 /// Number of descriptors/buffer segments
 pub const RXDESCRS: usize = 4;
 
@@ -293,7 +295,7 @@ impl fmt::Debug for RXDL {
 /// values within the struct, hence the repr(C).
 ///
 /// See datasheet Figure 23-4 for layout.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(transparent)]
 pub struct RDES {
     /// Content
@@ -309,7 +311,7 @@ impl RDES {
 
 /// TX descriptor field masks for the first word (RDES0)
 /// See datasheet Table 23-8
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(u32)]
 pub enum RDES0 {
     /// Status flag set by the DMA or software to transfer ownership
@@ -398,7 +400,7 @@ pub enum RDES0 {
 
 /// TX descriptor field masks for second word (RDES1)
 /// See datasheet table 23-9
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(u32)]
 pub enum RDES1 {
     /// Disable Interrupt on Completion

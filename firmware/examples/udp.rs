@@ -33,7 +33,7 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
     type Error = Infallible;
 
     fn write_str(&mut self, s: &str) -> Result<(), Infallible> {
-        self.0.write_all(s);
+        write!(self.0, "{}", s);
         Ok(())
     }
 }

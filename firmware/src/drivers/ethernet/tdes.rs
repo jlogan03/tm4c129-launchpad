@@ -5,7 +5,7 @@ use core::fmt;
 use ufmt::derive::uDebug;
 
 /// Number of descriptors/buffer segments
-pub const TXDESCRS: usize = 4;
+pub const TXDESCRS: usize = 8;
 
 /// Number of bytes per buffer segment
 pub const TXBUFSIZE: usize = 1522;  // Maximum size of standard frame
@@ -54,7 +54,6 @@ impl TXDL {
                 }
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);
-                // txdl.set_tdes0(TDES0::LS);
 
                 txdl.set_tdes0(TDES0::TCH);  // Next descriptor is chained
             }

@@ -21,7 +21,7 @@ use tm4c129x_hal::serial;
 use tm4c129x_hal::serial::*;
 use tm4c129x_hal::time::Bps;
 
-use catnip::{arp::*, enet::*, ip::*, udp::*, *};
+use catnip::{enet::*, arp::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
     drivers::ethernet::{EthernetDriver, socket::UDPSocket, EthernetError, RXBUFSIZE},
@@ -33,7 +33,7 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
     type Error = Infallible;
 
     fn write_str(&mut self, s: &str) -> Result<(), Infallible> {
-        write!(self.0, "{}", s);
+        let _ = write!(self.0, "{}", s).unwrap_or_default();
         Ok(())
     }
 }
@@ -50,8 +50,8 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     buffer: &mut [u8; RXBUFSIZE]
 ) {
     // Receive ethernet bytes
-    match enet.receive(buffer) {
-        Ok(num_bytes) => {
+    while let Ok(num_bytes) = enet.receive(buffer) {
+        // {
             // We received ethernet data
             let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes)
                 .unwrap_or_default();
@@ -60,62 +60,57 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
             let ethernet_header = EthernetHeader::read_bytes(buffer);
             uwriteln!(uart, "{:?}", ethernet_header).unwrap_or_default();
 
-            if ethernet_header.ethertype == EtherType::IpV4
+            match ethernet_header.ethertype {
+                EtherType::IpV4 => 
                 {
                     // IPV4 packet
-                    uwriteln!(uart, "IP packet").unwrap_or_default();
+                    // uwriteln!(uart, "IP packet").unwrap_or_default();
                     let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
                     uwriteln!(uart, "{:?}", ipheader).unwrap_or_default();
 
                     match ipheader.protocol {
                         // UDP packet
                         Protocol::Udp => {
-                            uwriteln!(uart, "UDP packet").unwrap_or_default();
+                            // uwriteln!(uart, "UDP packet").unwrap_or_default();
                             let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
                             uwriteln!(uart, "{:?}", udpheader).unwrap_or_default();
                         }
                         _ => {}
                     }
                 }
-                else if ethernet_header.ethertype == EtherType::Arp {
+                EtherType::Arp => {
                     // ARP packet
-                    uwriteln!(uart, "ARP packet").unwrap_or_default();
+                    let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
+                    uwriteln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
 
-                    let mut bytes = [0_u8; 2];
-                    bytes.copy_from_slice(&buffer[16..=17]);
-                    let ptypeint = u16::from_be_bytes(bytes);
-                    let ptype = EtherType::from(ptypeint);
-                    
-                    // let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
-                    // uwriteln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
+                    // Send an ARP response
+                    let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+                        header: EthernetHeader {
+                            dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
+                            src_macaddr: udp.src_macaddr,
+                            ethertype: EtherType::Arp,
+                        },
+                        data: ArpPayload::new(
+                            udp.src_macaddr,
+                            // MacAddr::ANY,
+                            udp.src_ipaddr,
+                            arp_incoming.src_mac,
+                            arp_incoming.src_ipaddr,
+                            ArpOperation::Response,
+                        ),
+                        checksum: 0,
+                    };
 
-                    // // Send an ARP response
-                    // let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
-                    //     header: EthernetHeader {
-                    //         dst_macaddr: MacAddr::ANY, // Ethernet broadcast
-                    //         src_macaddr: udp.src_macaddr,
-                    //         ethertype: EtherType::ARP,
-                    //     },
-                    //     data: ArpPayload::new(
-                    //         udp.src_macaddr,
-                    //         udp.src_ipaddr,
-                    //         arp_incoming.src_mac,
-                    //         arp_incoming.src_ipaddr,
-                    //         ArpOperation::Response,
-                    //     ),
-                    //     checksum: 0,
-                    // };
-
-                    // match enet.transmit(arp_response.to_be_bytes(), None) {
-                    //     // Do not insert IP/UDP checksums for ARP packet
-                    //     Ok(_) => {} //uwriteln!(uart, "Sent ARP response").unwrap_or_default(),
-                    //     Err(x) => {} //uwriteln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default(),
-                    // };
+                    match enet.transmit(arp_response.to_be_bytes(), None) {
+                        // Do not insert IP/UDP checksums for ARP packet
+                        Ok(_) => {let _ = uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data).unwrap_or_default();},
+                        Err(x) => {let _ = uwriteln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default();},
+                    };
                 }
-                else {}
+                _ => {}
             }
-        Err(EthernetError::NothingToReceive) => (),
-        Err(x) => writeln!(uart.0, "Ethernet RX error: {:?}", x).unwrap_or_default(),
+        // Err(EthernetError::NothingToReceive) => (),
+        // Err(x) => {let _ = writeln!(uart.0, "Ethernet RX error: {:?}", x).unwrap_or_default();},
     };
 
     // Test UDP transmit
@@ -147,7 +142,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
     // LEDs
-    let mut loops = 0;
+    let mut loops: u64 = 0;
     let mut led_state = 0;
 
     // Ethernet receive buffer
@@ -166,20 +161,20 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
 
     loop {
-        delay.delay_ms(10u32);
+        delay.delay_ms(2000u32);
     
         poll_ethernet(&mut board.enet, &mut uart, &udp, &mut buffer);
 
         // Spam serial
-        if loops % 10000 == 0 {
-            let _ = writeln!(uart.0, "\n\nHello, world! Loops = {}", loops).unwrap_or_default();
-            while let Ok(_) = uart.0.read() {
+        if loops % 1000000 == 0 {
+            let _ = writeln!(uart.0, "\n\nLoops = {}", loops).unwrap_or_default();
+            // while let Ok(_) = uart.0.read() {
                 // Echo
                 // uwriteln!(uart, "byte read {}", ch).unwrap_or_default();
 
                 // Show MAC address
                 // writemac(&mut uart.0, "Our MAC address: ", &udp.src_macaddr.0);
-            }
+            // }
 
             // Debugging
             // let rxdl = &mut (board.enet.rxdl);
@@ -237,7 +232,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         }
 
         // board.enet.emacclear(); // Clear clearable interrupts
-        loops = loops + 1;
+        loops = loops.wrapping_add(1);
 
         if loops % 1 == 0 {
             led_state = (led_state + 1) % 4;
@@ -267,6 +262,6 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 continue;
             }
         }
-        delay.delay_ms(1u32);
+        // delay.delay_ms(1u32);
     }
 }

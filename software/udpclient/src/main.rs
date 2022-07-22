@@ -61,6 +61,6 @@ fn main() {
             println!("Loop {i}");
         }
 
-        thread::sleep(Duration::from_micros(1));
+        thread::sleep(Duration::from_millis(5000));
     }
 }

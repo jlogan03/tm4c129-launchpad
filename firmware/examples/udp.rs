@@ -38,12 +38,91 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
     }
 }
 
-fn writemac<T: Write>(u: &mut T, prefix: &str, v: &[u8; 6]) -> () {
-    write!(u, "{}", prefix).unwrap_or_default();
-    for x in *v {
-        write!(u, "{:x} ", x).unwrap_or_default();
-    }
-    writeln!(u, "").unwrap_or_default();
+// IP
+const IPSTART: usize = EthernetHeader::BYTE_LEN;
+const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
+const ARPSTART: usize = IPSTART;
+
+fn poll_ethernet<TX, RX, RTS, CTS>(
+    enet: &mut EthernetDriver,
+    uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
+    udp: &UDPSocket,
+    buffer: &mut [u8; RXBUFSIZE]
+) {
+    // Receive ethernet bytes
+    match enet.receive(buffer) {
+        Ok(num_bytes) => {
+            // We received ethernet data
+            let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes)
+                .unwrap_or_default();
+
+            // Ethernet header
+            let ethernet_header = EthernetHeader::read_bytes(buffer);
+            uwriteln!(uart, "{:?}", ethernet_header).unwrap_or_default();
+
+            if ethernet_header.ethertype == EtherType::IpV4
+                {
+                    // IPV4 packet
+                    uwriteln!(uart, "IP packet").unwrap_or_default();
+                    let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
+                    uwriteln!(uart, "{:?}", ipheader).unwrap_or_default();
+
+                    match ipheader.protocol {
+                        // UDP packet
+                        Protocol::Udp => {
+                            uwriteln!(uart, "UDP packet").unwrap_or_default();
+                            let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
+                            uwriteln!(uart, "{:?}", udpheader).unwrap_or_default();
+                        }
+                        _ => {}
+                    }
+                }
+                else if ethernet_header.ethertype == EtherType::Arp {
+                    // ARP packet
+                    uwriteln!(uart, "ARP packet").unwrap_or_default();
+
+                    let mut bytes = [0_u8; 2];
+                    bytes.copy_from_slice(&buffer[16..=17]);
+                    let ptypeint = u16::from_be_bytes(bytes);
+                    let ptype = EtherType::from(ptypeint);
+                    
+                    // let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
+                    // uwriteln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
+
+                    // // Send an ARP response
+                    // let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+                    //     header: EthernetHeader {
+                    //         dst_macaddr: MacAddr::ANY, // Ethernet broadcast
+                    //         src_macaddr: udp.src_macaddr,
+                    //         ethertype: EtherType::ARP,
+                    //     },
+                    //     data: ArpPayload::new(
+                    //         udp.src_macaddr,
+                    //         udp.src_ipaddr,
+                    //         arp_incoming.src_mac,
+                    //         arp_incoming.src_ipaddr,
+                    //         ArpOperation::Response,
+                    //     ),
+                    //     checksum: 0,
+                    // };
+
+                    // match enet.transmit(arp_response.to_be_bytes(), None) {
+                    //     // Do not insert IP/UDP checksums for ARP packet
+                    //     Ok(_) => {} //uwriteln!(uart, "Sent ARP response").unwrap_or_default(),
+                    //     Err(x) => {} //uwriteln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default(),
+                    // };
+                }
+                else {}
+            }
+        Err(EthernetError::NothingToReceive) => (),
+        Err(x) => writeln!(uart.0, "Ethernet RX error: {:?}", x).unwrap_or_default(),
+    };
+
+    // Test UDP transmit
+    // match udp.transmit(enet, *b"hello world! ... ... ...") {
+    //     Ok(_) => (),
+    //     Err(x) => writeln!(uart.0, "UDP TX error: {:?}", x).unwrap_or_default(),
+    // };
 }
 
 #[no_mangle]
@@ -84,117 +163,17 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         dst_port: 8053,
     };
 
-    // Eth
-    let mut ethernet_header: EthernetHeader;
 
-    // IP
-    const IPSTART: usize = EthernetHeader::BYTE_LEN;
-    let mut ipheader: IpV4Header;
-
-    // UDP
-    const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
-    let mut udpheader: UdpHeader;
-
-    // ARP
-    const ARPSTART: usize = IPSTART;
-    let mut arp_incoming: ArpPayload;
-
-    fn poll_ethernet<TX, RX, RTS, CTS>(
-        enet: &mut EthernetDriver,
-        uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
-        udp: &UDPSocket,
-        buffer: &mut [u8; RXBUFSIZE]
-    ) {
-        // Receive ethernet bytes
-        match enet.receive(buffer) {
-            Ok(num_bytes) => {
-                // We received ethernet data
-                let _ = uwriteln!(uart, "Received {} ethernet bytes", num_bytes)
-                    .unwrap_or_default();
-
-                // Ethernet header
-                let ethernet_header = EthernetHeader::read_bytes(buffer);
-
-                // writemac(
-                //     &mut uart.0,
-                //     "src macaddr: ",
-                //     &ethernet_header.src_macaddr,
-                // );
-                // writemac(
-                //     &mut uart.0,
-                //     "dst macaddr: ",
-                //     &ethernet_header.dst_macaddr,
-                // );
-                uwriteln!(uart, "{:?}", ethernet_header).unwrap_or_default();
-
-                match ethernet_header.ethertype {
-                    EtherType::IPV4 => {
-                        // IPV4 packet
-                        uwriteln!(uart, "IP packet").unwrap_or_default();
-                        let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
-                        uwriteln!(uart, "{:?}", ipheader).unwrap_or_default();
-
-                        match ipheader.protocol {
-                            // UDP packet
-                            Protocol::UDP => {
-                                uwriteln!(uart, "UDP packet").unwrap_or_default();
-                                let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
-                                uwriteln!(uart, "{:?}", udpheader).unwrap_or_default();
-                            }
-                            _ => {}
-                        }
-                    }
-                    EtherType::ARP => {
-                        // ARP packet
-                        uwriteln!(uart, "ARP packet").unwrap_or_default();
-                        // let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
-                        // uwriteln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
-
-                        // // Send an ARP response
-                        // let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
-                        //     header: EthernetHeader {
-                        //         dst_macaddr: MacAddr::ANY, // Ethernet broadcast
-                        //         src_macaddr: udp.src_macaddr,
-                        //         ethertype: EtherType::ARP,
-                        //     },
-                        //     data: ArpPayload::new(
-                        //         udp.src_macaddr,
-                        //         udp.src_ipaddr,
-                        //         arp_incoming.src_mac,
-                        //         arp_incoming.src_ipaddr,
-                        //         ArpOperation::Response,
-                        //     ),
-                        //     checksum: 0,
-                        // };
-
-                        // match enet.transmit(arp_response.to_be_bytes(), None) {
-                        //     // Do not insert IP/UDP checksums for ARP packet
-                        //     Ok(_) => {} //uwriteln!(uart, "Sent ARP response").unwrap_or_default(),
-                        //     Err(x) => {} //uwriteln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default(),
-                        // };
-                    }
-                    _ => {}
-                }
-            }
-            Err(EthernetError::NothingToReceive) => (),
-            Err(x) => writeln!(uart.0, "Ethernet RX error: {:?}", x).unwrap_or_default(),
-        };
-
-        // Test UDP transmit
-        match udp.transmit(enet, *b"hello world! ... ... ...") {
-            Ok(_) => (),
-            Err(x) => writeln!(uart.0, "UDP TX error: {:?}", x).unwrap_or_default(),
-        };
-    }
 
     loop {
-        poll_ethernet(&mut board.enet, &mut uart, &udp, &mut buffer);
         delay.delay_ms(10u32);
+    
+        poll_ethernet(&mut board.enet, &mut uart, &udp, &mut buffer);
 
         // Spam serial
         if loops % 10000 == 0 {
             let _ = writeln!(uart.0, "\n\nHello, world! Loops = {}", loops).unwrap_or_default();
-            while let Ok(ch) = uart.0.read() {
+            while let Ok(_) = uart.0.read() {
                 // Echo
                 // uwriteln!(uart, "byte read {}", ch).unwrap_or_default();
 

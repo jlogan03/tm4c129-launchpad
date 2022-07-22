@@ -9,7 +9,7 @@ use tm4c129x_hal::{
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
-use ufmt::{*, derive::*};
+use ufmt::derive::uDebug;
 
 use self::rdes::*;
 pub use self::rdes::{RXBUFSIZE, RXDESCRS};

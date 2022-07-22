@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use ufmt::{*, derive::*};
+use ufmt::derive::uDebug;
 
 /// Number of descriptors/buffer segments
 pub const RXDESCRS: usize = 4;

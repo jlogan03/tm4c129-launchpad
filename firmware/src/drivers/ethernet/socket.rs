@@ -2,6 +2,8 @@
 
 use catnip::{enet::*, ip::*, udp::*, *};
 
+use core::ptr::read_volatile;
+
 use super::tdes::TDES0;
 use super::{EthernetDriver, EthernetError};
 
@@ -42,7 +44,10 @@ impl UDPSocket {
         )
         .to_be_bytes();
 
-        enet.transmit(frame, Some(TDES0::CicFull))
+        unsafe {
+            read_volatile(&enet.transmit(frame, Some(TDES0::CicFull)))
+        }
+        
     }
 }
 
@@ -61,7 +66,7 @@ pub fn build_frame<const N: usize>(
         header: EthernetHeader {
             dst_macaddr: dst_macaddr,
             src_macaddr: src_macaddr,
-            ethertype: EtherType::IPV4,
+            ethertype: EtherType::IpV4,
         },
         data: IpV4Frame::<UdpFrame<ByteArray<N>>> {
             header: IpV4Header {
@@ -73,7 +78,7 @@ pub fn build_frame<const N: usize>(
                 identification: 0,
                 fragmentation: Fragmentation::default(),
                 time_to_live: 10,
-                protocol: Protocol::UDP,
+                protocol: Protocol::Udp,
                 checksum: 0,
                 src_ipaddr: src_ipaddr,
                 dst_ipaddr: dst_ipaddr,

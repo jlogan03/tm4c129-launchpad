@@ -9,20 +9,20 @@ fn main() {
     // Bind a port
     let socket = UdpSocket::bind("0.0.0.0:8053").unwrap();
     socket
-        .set_read_timeout(Some(Duration::from_nanos(1)))
+        .set_read_timeout(Some(Duration::from_millis(10)))
         .unwrap();
     // Tell the socket to listen for 
-    // let connected = match socket.connect(dst_addr) {
-    //     Ok(_) => {
-    //         println!("Socket connection success");
-    //         true
-    //     }
-    //     Err(x) => {
-    //         println!("Socket connection error: {x:?}");
-    //         false
-    //     }
-    // };
-    let connected = true;
+    let connected = match socket.connect(dst_addr) {
+        Ok(_) => {
+            println!("Socket connection success");
+            true
+        }
+        Err(x) => {
+            println!("Socket connection error: {x:?}");
+            false
+        }
+    };
+    // let connected = true;
     socket.set_broadcast(true).unwrap(); // Enable sending to broadcast address
 
     // Try to send and receive
@@ -38,7 +38,7 @@ fn main() {
                     String::from_utf8_unchecked(buf[0..amt].to_vec())
                 });
             };
-            // println!("{i} Nothing to receive");
+            println!("{i} Nothing to receive");
         } else {
             println!("{i} Skipping recv due to connection failure")
         }

@@ -13,7 +13,6 @@ use ufmt::*;
 
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
-use embedded_hal::prelude::{_embedded_hal_serial_Read, _embedded_hal_serial_Write};
 
 use tm4c129x_hal::gpio::GpioExt;
 
@@ -21,10 +20,10 @@ use tm4c129x_hal::serial;
 use tm4c129x_hal::serial::*;
 use tm4c129x_hal::time::Bps;
 
-use catnip::{enet::*, arp::*, ip::*, udp::*, *};
+use catnip::{arp::*, enet::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{EthernetDriver, socket::UDPSocket, EthernetError, RXBUFSIZE},
+    drivers::ethernet::{socket::UDPSocket, EthernetDriver, RXBUFSIZE},
 };
 
 struct SerialUWriteable<UART, TX, RX, RTS, CTS>(Serial<UART, TX, RX, RTS, CTS>);
@@ -47,52 +46,47 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     enet: &mut EthernetDriver,
     uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
     udp: &UDPSocket,
-    buffer: &mut [u8; RXBUFSIZE]
+    buffer: &mut [u8; RXBUFSIZE],
 ) {
     // Receive ethernet bytes
     while let Ok(num_bytes) = enet.receive(buffer) {
-        // {
-            // We received ethernet data
-            let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes)
-                .unwrap_or_default();
+        // We received ethernet data
+        let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes).unwrap_or_default();
 
-            // Ethernet header
-            let ethernet_header = EthernetHeader::read_bytes(buffer);
-            uwriteln!(uart, "{:?}", ethernet_header).unwrap_or_default();
+        // Ethernet header
+        let ethernet_header = EthernetHeader::read_bytes(buffer);
+        uwriteln!(uart, "{:?}", ethernet_header).unwrap_or_default();
 
-            match ethernet_header.ethertype {
-                EtherType::IpV4 => 
-                {
-                    // IPV4 packet
-                    // uwriteln!(uart, "IP packet").unwrap_or_default();
-                    let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
-                    uwriteln!(uart, "{:?}", ipheader).unwrap_or_default();
+        match ethernet_header.ethertype {
+            EtherType::IpV4 => {
+                // IPV4 packet
+                let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
+                uwriteln!(uart, "{:?}", ipheader).unwrap_or_default();
 
-                    match ipheader.protocol {
-                        // UDP packet
-                        Protocol::Udp => {
-                            // uwriteln!(uart, "UDP packet").unwrap_or_default();
-                            let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
-                            uwriteln!(uart, "{:?}", udpheader).unwrap_or_default();
-                        }
-                        _ => {}
+                match ipheader.protocol {
+                    // UDP packet
+                    Protocol::Udp => {
+                        let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
+                        uwriteln!(uart, "{:?}", udpheader).unwrap_or_default();
                     }
+                    _ => {}
                 }
-                EtherType::Arp => {
-                    // ARP packet
-                    let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
-                    uwriteln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
+            }
+            EtherType::Arp => {
+                // ARP packet
+                let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
+                uwriteln!(uart, "{:?}", &arp_incoming).unwrap_or_default();
 
-                    // Send an ARP response
+                // Send an ARP response
+                if arp_incoming.dst_ipaddr == udp.src_ipaddr {
                     let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
                         header: EthernetHeader {
-                            dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
+                            dst_macaddr: arp_incoming.src_mac, // Ethernet broadcast
                             src_macaddr: udp.src_macaddr,
                             ethertype: EtherType::Arp,
                         },
                         data: ArpPayload::new(
                             udp.src_macaddr,
-                            // MacAddr::ANY,
                             udp.src_ipaddr,
                             arp_incoming.src_mac,
                             arp_incoming.src_ipaddr,
@@ -103,21 +97,24 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
 
                     match enet.transmit(arp_response.to_be_bytes(), None) {
                         // Do not insert IP/UDP checksums for ARP packet
-                        Ok(_) => {let _ = uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data).unwrap_or_default();},
-                        Err(x) => {let _ = uwriteln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default();},
+                        Ok(_) => {
+                            let _ =
+                                uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data)
+                                    .unwrap_or_default();
+                        }
+                        Err(x) => {
+                            let _ =
+                                uwriteln!(uart, "Ethernet TX error: {:?}", x).unwrap_or_default();
+                        }
                     };
+                } else {
+                    let _ = uwriteln!(uart, "Skipping response to ARP message that is not for us")
+                        .unwrap_or_default();
                 }
-                _ => {}
             }
-        // Err(EthernetError::NothingToReceive) => (),
-        // Err(x) => {let _ = writeln!(uart.0, "Ethernet RX error: {:?}", x).unwrap_or_default();},
-    };
-
-    // Test UDP transmit
-    // match udp.transmit(enet, *b"hello world! ... ... ...") {
-    //     Ok(_) => (),
-    //     Err(x) => writeln!(uart.0, "UDP TX error: {:?}", x).unwrap_or_default(),
-    // };
+            _ => {}
+        };
+    }
 }
 
 #[no_mangle]
@@ -149,86 +146,125 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut buffer = [0_u8; RXBUFSIZE];
 
     // UDP socket
-    let udp = UDPSocket {
+    let mut udp = UDPSocket {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
         src_ipaddr: IpV4Addr::new([10, 0, 0, 229]),
         src_port: 8052,
-        dst_macaddr: MacAddr::ANY, // Ethernet broadcast required for IP packets
         dst_ipaddr: IpV4Addr::new([10, 0, 0, 127]),
-        dst_port: 8053,
+        dst_port: 8052,
+        id: 0
     };
 
+    // Send an ARP announcement
+    let arp_announcement: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+        header: EthernetHeader {
+            dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
+            src_macaddr: udp.src_macaddr,
+            ethertype: EtherType::Arp,
+        },
+        data: ArpPayload::new(
+            udp.src_macaddr,
+            udp.src_ipaddr,
+            MacAddr::ANY,
+            udp.src_ipaddr,
+            ArpOperation::Request,
+        ),
+        checksum: 0,
+    };
 
+    match &board
+        .enet
+        .transmit(arp_announcement.to_be_bytes(), None)//Some(TDES0::CicFrameOnly))
+    {
+        // Do not insert IP/UDP checksums for ARP packet
+        Ok(_) => {
+            let _ = uwriteln!(
+                uart,
+                "\nSent ARP announcement: {:?}",
+                &arp_announcement.data
+            )
+            .unwrap_or_default();
+        }
+        Err(x) => {
+            let _ = uwriteln!(uart, "\nEthernet TX error: {:?}", x).unwrap_or_default();
+        }
+    };
+
+    drop(arp_announcement);
 
     loop {
-        delay.delay_ms(2000u32);
-    
+        let dt = 10_u32;
+        delay.delay_ms(10u32);
         poll_ethernet(&mut board.enet, &mut uart, &udp, &mut buffer);
 
+        // Test UDP transmit once per second
+        if loops % (1000 / dt as u64) == 0 {
+            match udp.transmit(&mut board.enet, *b"hello world! ... ... ...") {
+                Ok(_) => {let _ = uwriteln!(uart, "\nSent UDP frame ID {:?}", &udp.id).unwrap_or_default();},
+                Err(x) => {let _ = uwriteln!(uart, "UDP TX error: {:?}", x).unwrap_or_default();},
+            };
+        }
+
         // Spam serial
-        if loops % 1000000 == 0 {
+        if loops % 1000 == 0 {
             let _ = writeln!(uart.0, "\n\nLoops = {}", loops).unwrap_or_default();
             // while let Ok(_) = uart.0.read() {
-                // Echo
-                // uwriteln!(uart, "byte read {}", ch).unwrap_or_default();
-
-                // Show MAC address
-                // writemac(&mut uart.0, "Our MAC address: ", &udp.src_macaddr.0);
+            // writeln!(uart.0, "byte read {}", ch).unwrap_or_default();
             // }
 
             // Debugging
-            // let rxdl = &mut (board.enet.rxdl);
-            // writeln!(uart.0, "{:?}", rxdl).unwrap_or_default();
+            let rxdl = &mut (board.enet.rxdl);
+            writeln!(uart.0, "{:?}", rxdl).unwrap_or_default();
 
-            // let txdl = &mut (board.enet.txdl);
-            // writeln!(uart.0, "{:?}", txdl).unwrap_or_default();
+            let txdl = &mut (board.enet.txdl);
+            writeln!(uart.0, "{:?}", txdl).unwrap_or_default();
 
             // Check EMAC status
-            // let status = board.enet.emac.status.read().txpaused().bit_is_set();
-            // writeln!(uart.0, "EMAC TX paused? {status}").unwrap_or_default();
-            // let status = board.enet.emac.hostxdesc.read().bits();
-            // writeln!(uart.0, "EMAC TX descr addr {status}").unwrap_or_default();
-            // let status = board.enet.emac.hostxba.read().bits();
-            // writeln!(uart.0, "EMAC TX buf addr {status}").unwrap_or_default();
-            // let status = board.enet.emac.txdladdr.read().bits();
-            // writeln!(uart.0, "EMAC TXDL addr {status}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().txfe().bit_is_set();
-            // writeln!(uart.0, "EMAC TX FIFO not empty? {status}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().twc().bit_is_set();
-            // writeln!(uart.0, "EMAC TX FIFO write controller active? {status}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().tpe().bit_is_set();
-            // writeln!(uart.0, "EMAC MII transmit protocol engine status? {status}")
-            //     .unwrap_or_default();
-            // let status = board.enet.emac.status.read().tfc().variant();
-            // writeln!(uart.0, "EMAC MII transmit frame controller status {status:?}")
-            //     .unwrap_or_default();
-            // let status = board.enet.emac.dmaris.read().ts().bits();
-            // writeln!(uart.0, "EMAC DMA transmit process state {status:?}").unwrap_or_default();
+            let status = board.enet.emac.status.read().txpaused().bit_is_set();
+            writeln!(uart.0, "EMAC TX paused? {status}").unwrap_or_default();
+            let status = board.enet.emac.hostxdesc.read().bits();
+            writeln!(uart.0, "EMAC TX descr addr {status}").unwrap_or_default();
+            let status = board.enet.emac.hostxba.read().bits();
+            writeln!(uart.0, "EMAC TX buf addr {status}").unwrap_or_default();
+            let status = board.enet.emac.txdladdr.read().bits();
+            writeln!(uart.0, "EMAC TXDL addr {status}").unwrap_or_default();
+            let status = board.enet.emac.status.read().txfe().bit_is_set();
+            writeln!(uart.0, "EMAC TX FIFO not empty? {status}").unwrap_or_default();
+            let status = board.enet.emac.status.read().twc().bit_is_set();
+            writeln!(uart.0, "EMAC TX FIFO write controller active? {status}").unwrap_or_default();
+            let status = board.enet.emac.status.read().tpe().bit_is_set();
+            writeln!(uart.0, "EMAC MII transmit protocol engine status? {status}")
+                .unwrap_or_default();
+            let status = board.enet.emac.status.read().tfc().variant();
+            writeln!(uart.0, "EMAC MII transmit frame controller status {status:?}")
+                .unwrap_or_default();
+            let status = board.enet.emac.dmaris.read().ts().bits();
+            writeln!(uart.0, "EMAC DMA transmit process state {status:?}").unwrap_or_default();
 
-            // let status = board.enet.emac.status.read().rrc().bits();
-            // writeln!(uart.0, "EMAC RX FIFO controller state? {status:?}").unwrap_or_default();
-            // let status = board.enet.emac.hosrxdesc.read().bits();
-            // writeln!(uart.0, "EMAC RX descr addr {status}").unwrap_or_default();
-            // let status = board.enet.emac.hosrxba.read().bits();
-            // writeln!(uart.0, "EMAC RX buf addr {status}").unwrap_or_default();
-            // let status = board.enet.emac.rxdladdr.read().bits();
-            // writeln!(uart.0, "EMAC RXDL addr {status}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().rxf().bits();
-            // writeln!(uart.0, "EMAC RX FIFO status? {status:?}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().rwc().bit_is_set();
-            // writeln!(uart.0, "EMAC RX FIFO write controller active? {status}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().rpe().bit_is_set();
-            // writeln!(uart.0, "EMAC MII receive protocol engine status? {status}").unwrap_or_default();
-            // let status = board.enet.emac.status.read().rfcfc().bits();
-            // writeln!(uart.0, "EMAC MII receive frame controller status {status:?}")
-            //     .unwrap_or_default();
-            // let status = board.enet.emac.dmaris.read().rs().bits();
-            // writeln!(uart.0, "EMAC DMA receive process state {status:?}").unwrap_or_default();
+            let status = board.enet.emac.status.read().rrc().bits();
+            writeln!(uart.0, "EMAC RX FIFO controller state? {status:?}").unwrap_or_default();
+            let status = board.enet.emac.hosrxdesc.read().bits();
+            writeln!(uart.0, "EMAC RX descr addr {status}").unwrap_or_default();
+            let status = board.enet.emac.hosrxba.read().bits();
+            writeln!(uart.0, "EMAC RX buf addr {status}").unwrap_or_default();
+            let status = board.enet.emac.rxdladdr.read().bits();
+            writeln!(uart.0, "EMAC RXDL addr {status}").unwrap_or_default();
+            let status = board.enet.emac.status.read().rxf().bits();
+            writeln!(uart.0, "EMAC RX FIFO status? {status:?}").unwrap_or_default();
+            let status = board.enet.emac.status.read().rwc().bit_is_set();
+            writeln!(uart.0, "EMAC RX FIFO write controller active? {status}").unwrap_or_default();
+            let status = board.enet.emac.status.read().rpe().bit_is_set();
+            writeln!(uart.0, "EMAC MII receive protocol engine status? {status}").unwrap_or_default();
+            let status = board.enet.emac.status.read().rfcfc().bits();
+            writeln!(uart.0, "EMAC MII receive frame controller status {status:?}")
+                .unwrap_or_default();
+            let status = board.enet.emac.dmaris.read().rs().bits();
+            writeln!(uart.0, "EMAC DMA receive process state {status:?}").unwrap_or_default();
 
-            // let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
-            // writeln!(uart.0, "EMAC DMA bus error? {status:?}").unwrap_or_default();
-            // let status = board.enet.emac.dmaris.read().ae().bits();
-            // writeln!(uart.0, "EMAC DMA access error type {status:?}\n\n").unwrap_or_default();
+            let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
+            writeln!(uart.0, "EMAC DMA bus error? {status:?}").unwrap_or_default();
+            let status = board.enet.emac.dmaris.read().ae().bits();
+            writeln!(uart.0, "EMAC DMA access error type {status:?}\n\n").unwrap_or_default();
         }
 
         // board.enet.emacclear(); // Clear clearable interrupts

@@ -8,6 +8,7 @@ use ufmt::derive::uDebug;
 pub const TXDESCRS: usize = 8;
 
 /// Number of bytes per buffer segment
+/// This could be tuned down if we know an upper limit on transmitted frame size
 pub const TXBUFSIZE: usize = 1522;  // Maximum size of standard frame
 
 /// TX Descriptor List ring buffer

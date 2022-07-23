@@ -15,32 +15,33 @@ pub struct UDPSocket {
     pub src_ipaddr: IpV4Addr,
     /// Source port
     pub src_port: u16,
-    /// Destination MAC address (can be None, and filled in by the network switch)
-    pub dst_macaddr: MacAddr,
     /// Destination IP address
     pub dst_ipaddr: IpV4Addr,
     /// Destination port
     pub dst_port: u16,
+    /// Incrementing packet identification
+    pub id: u16
 }
 
 impl UDPSocket {
     /// Build a UDP packet from data & pass it to the ethernet driver to transmit in hardware
     pub fn transmit<const N: usize>(
-        &self,
+        &mut self,
         enet: &mut EthernetDriver,
         data: [u8; N],
     ) -> Result<(), EthernetError>
     where
         [u8; EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
     {
+        self.id = self.id.wrapping_add(1);
         let frame = build_frame(
             data,
             self.src_macaddr,
             self.src_ipaddr,
             self.src_port,
-            self.dst_macaddr,
             self.dst_ipaddr,
             self.dst_port,
+            self.id.clone()
         )
         .to_be_bytes();
 
@@ -58,13 +59,13 @@ pub fn build_frame<const N: usize>(
     src_macaddr: MacAddr,
     src_ipaddr: IpV4Addr,
     src_port: u16,
-    dst_macaddr: MacAddr,
     dst_ipaddr: IpV4Addr,
     dst_port: u16,
+    id: u16
 ) -> EthernetFrame<IpV4Frame<UdpFrame<ByteArray<N>>>> {
     let frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
         header: EthernetHeader {
-            dst_macaddr: dst_macaddr,
+            dst_macaddr: MacAddr::BROADCAST, // Always broadcast for IP frames
             src_macaddr: src_macaddr,
             ethertype: EtherType::IpV4,
         },
@@ -75,9 +76,9 @@ pub fn build_frame<const N: usize>(
                     .with_header_length((IpV4Header::BYTE_LEN / 4) as u8),
                 dscp: DSCP::Standard,
                 total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
-                identification: 0,
+                identification: id,
                 fragmentation: Fragmentation::default(),
-                time_to_live: 10,
+                time_to_live: 64,
                 protocol: Protocol::Udp,
                 checksum: 0,
                 src_ipaddr: src_ipaddr,

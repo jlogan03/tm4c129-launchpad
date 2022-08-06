@@ -20,7 +20,7 @@ pub struct UDPSocket {
     /// Destination port
     pub dst_port: u16,
     /// Incrementing packet identification
-    pub id: u16
+    pub id: u16,
 }
 
 impl UDPSocket {
@@ -32,6 +32,7 @@ impl UDPSocket {
     ) -> Result<(), EthernetError>
     where
         [u8; EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
+        [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
     {
         self.id = self.id.wrapping_add(1);
         let frame = build_frame(
@@ -41,14 +42,11 @@ impl UDPSocket {
             self.src_port,
             self.dst_ipaddr,
             self.dst_port,
-            self.id.clone()
+            self.id.clone(),
         )
         .to_be_bytes();
 
-        unsafe {
-            read_volatile(&enet.transmit(frame, Some(TDES0::CicFull)))
-        }
-        
+        unsafe { read_volatile(&enet.transmit(frame, Some(TDES0::CicFrameOnly))) }
     }
 }
 
@@ -61,9 +59,9 @@ pub fn build_frame<const N: usize>(
     src_port: u16,
     dst_ipaddr: IpV4Addr,
     dst_port: u16,
-    id: u16
-) -> EthernetFrame<IpV4Frame<UdpFrame<ByteArray<N>>>> {
-    let frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
+    id: u16,
+) -> EthernetFrame<IpV4Frame<UdpFrame<ByteArray<N>>>> where [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]: {
+    let mut frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
         header: EthernetHeader {
             dst_macaddr: MacAddr::BROADCAST, // Always broadcast for IP frames
             src_macaddr: src_macaddr,
@@ -96,6 +94,11 @@ pub fn build_frame<const N: usize>(
         },
         checksum: 0_u32,
     };
+
+    // Write IP and UDP checksums
+    // let ip_bytes: [u8; IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN] = frame.data.to_be_bytes();
+    // frame.data.header.checksum = calc_ip_checksum(&ip_bytes);
+    // frame.data.data.header.checksum = calc_ip_checksum(&frame.data.data.to_be_bytes());
 
     frame
 }

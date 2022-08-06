@@ -53,6 +53,11 @@ impl TXDL {
                     txdl.set_next_pointer(txdl.txdladdr as u32);
                     txdl.set_tdes0(TDES0::TER);  // End-of-ring
                 }
+
+                // Enable ethernet checksum replacement
+                txdl.set_tdes0(TDES0::CRCR);
+                txdl.set_tdes0(TDES0::DC);  // Unintuitive, but we have to set this flag high per datasheet table 20-19 to get CRC replacement
+
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);
                 txdl.set_tdes0(TDES0::LS);

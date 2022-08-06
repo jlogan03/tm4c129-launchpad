@@ -387,10 +387,13 @@ impl EthernetDriver {
         }
 
         // Setup up EMAC transmission behavior
-        match self.checksum_offload {
-            true => self.emac.cfg.write(|w| w.ipc().set_bit()), // Checksum offload
-            false => self.emac.cfg.write(|w| w.ipc().clear_bit()), // Use software checksum
-        }
+
+        // No reason not to offload checksums; always faster than software
+        self.emac.cfg.write(|w| w.ipc().set_bit());
+        // match self.checksum_offload {
+        //     true => self.emac.cfg.write(|w| w.ipc().set_bit()), // Checksum offload
+        //     false => self.emac.cfg.write(|w| w.ipc().clear_bit()), // Use software checksum
+        // }
 
         match self.preamble_length {
             PreambleLength::_3 => self.emac.cfg.write(|w| w.prelen()._3()),

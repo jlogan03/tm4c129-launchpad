@@ -1,22 +1,22 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
-pub mod tdes; // TX descriptor ring definitions
 pub mod rdes; // RX ...
-pub mod socket;  // UDP socket
+pub mod socket;
+pub mod tdes; // TX descriptor ring definitions // UDP socket
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
-use ufmt::derive::uDebug;
 use modular_bitfield::prelude::*;
+use ufmt::derive::uDebug;
 
 use self::rdes::*;
 pub use self::rdes::{RXBUFSIZE, RXDESCRS};
 
 use self::tdes::*;
-pub use self::tdes::{TXBUFSIZE, TXDESCRS, TDES0};
+pub use self::tdes::{TDES0, TXBUFSIZE, TXDESCRS};
 
 /// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EmacR;
@@ -186,7 +186,7 @@ impl EthernetDriver {
                     self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
                     // Tell the DMA that there is demand for transmission by writing any value to the register
-                    self.emac.txpolld.write(|w| w.tpd().bits(1));
+                    self.emac.txpolld.write(|w| w.tpd().bits(0));
 
                     // Make sure the transmitter is enabled, since it may have been disabled by errors
                     self.txstart();
@@ -237,8 +237,10 @@ impl EthernetDriver {
                 // so the entire frame should be stored in a single buffer.
                 // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
                 let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
-                buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE])); // Slice to guarantee length does not exceed buffer size
-                                                                                // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
+
+                // Slice to guarantee length does not exceed buffer size
+                buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE]));
+                // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
                 descr_buf.write_volatile([0_u8; RXBUFSIZE]);
             }
 
@@ -273,11 +275,11 @@ impl EthernetDriver {
         ephy_reset(pc);
 
         // Assumptions
-        self.emac.pc.modify(|_, w| w.phyext().clear_bit()); // Use internal PHY (disable external)
-        self.emac.pc.modify(|_, w| w.mdixen().set_bit()); // Enable MDIX
-        self.emac.pc.modify(|_, w| w.anen().set_bit()); // Enable autonegotiation
-        self.emac.cfg.modify(|_, w| w.fes().set_bit()); // Speed 100 base T
-        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode
+        self.emac.pc.write(|w| w.phyext().clear_bit()); // Use internal PHY (disable external)
+        self.emac.pc.write(|w| w.mdixen().set_bit()); // Enable MDIX
+        self.emac.pc.write(|w| w.anen().set_bit()); // Enable autonegotiation
+        self.emac.cfg.write(|w| w.fes().set_bit()); // Speed 100 base T
+        self.emac.cfg.write(|w| w.dupm().set_bit()); // Full duplex mode
 
         // Reset MAC again to latch configuration
         self.emac_reset();
@@ -290,40 +292,31 @@ impl EthernetDriver {
         self.txstop();
 
         // Assumptions
-        // self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface) READ ONLY
-        self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
-        self.emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // 8-word descriptor size
+        self.emac.cfg.write(|w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
+        self.emac.dmabusmod.write(|w| w.atds().set_bit()); // 8-word descriptor size
 
         // Set MAC address
         // Per mfr, addr0l must be set last because writing that register is the trigger
         // to latch the new address in hardware.
         unsafe {
             let addr = self.src_macaddr;
-            self.emac
-                .addr2h
-                .modify(|_, w| w.addrhi().bits(addr[4] as u16));
-            self.emac
-                .addr2l
-                .modify(|_, w| w.addrlo().bits(addr[5] as u32));
-            self.emac
-                .addr1h
-                .modify(|_, w| w.addrhi().bits(addr[2] as u16));
-            self.emac
-                .addr1l
-                .modify(|_, w| w.addrlo().bits(addr[3] as u32));
-            self.emac
-                .addr0h
-                .modify(|_, w| w.addrhi().bits(addr[1] as u16));
-            self.emac
-                .addr0l
-                .modify(|_, w| w.addrlo().bits(addr[0] as u32));
+
+            self.emac.addr2h.write(|w| w.addrhi().bits(addr[5] as u16));
+            self.emac.addr2l.write(|w| w.addrlo().bits(addr[4] as u32));
+
+            self.emac.addr1h.write(|w| w.addrhi().bits(addr[3] as u16));
+            self.emac.addr1l.write(|w| w.addrlo().bits(addr[2] as u32));
+
+            self.emac.addr0h.write(|w| w.addrhi().bits(addr[1] as u16));
+            self.emac.addr0l.write(|w| w.addrlo().bits(addr[0] as u32));
         }
 
         // Set source-address replacement using mac address 0 (the source address field exists in provided frames, but will be overwritten by the MAC)
         // This has to be done manually because svd2rust doesn't break out the SADDR field for some reason
-        unsafe {
-            self.emac.cfg.modify(|r, w| w.bits(r.bits() | 0x03 << 28));
-        }
+        // It's not documented in the datasheet, but if this field is left blank, then the source address insertion policy is controlled by the descriptor
+        // unsafe {
+        //     self.emac.cfg.modify(|r, w| w.bits(r.bits() | 0x03 << 28));
+        // }
 
         // Burst transfer limits
         // Not sure what the tradeoffs are
@@ -349,17 +342,17 @@ impl EthernetDriver {
         }; // If these are different sizes, unset fixed burst
            // Set flag for whether programmable burst limits are the same for RX and TX
         match rxburst == txburst {
-            true => self.emac.dmabusmod.modify(|_, w| w.usp().clear_bit()), // RX and TX burst limits are the same
-            false => self.emac.dmabusmod.modify(|_, w| w.usp().set_bit()), // RX and TX burst limits are different
+            true => self.emac.dmabusmod.write(|w| w.usp().clear_bit()), // RX and TX burst limits are the same
+            false => self.emac.dmabusmod.write(|w| w.usp().set_bit()), // RX and TX burst limits are different
         }
         // Set actual programmable burst limits
         unsafe {
-            self.emac.dmabusmod.modify(|_, w| w.rpbl().bits(rxburst));
-            self.emac.dmabusmod.modify(|_, w| w.pbl().bits(txburst));
+            self.emac.dmabusmod.write(|w| w.rpbl().bits(rxburst));
+            self.emac.dmabusmod.write(|w| w.pbl().bits(txburst));
         };
 
         // Disable interrupts (set interrupt masks)
-        self.emac.mmcrxim.modify(|_, w| {
+        self.emac.mmcrxim.write(|w| {
             w.algnerr()
                 .set_bit()
                 .crcerr()
@@ -369,7 +362,7 @@ impl EthernetDriver {
                 .ucgf()
                 .set_bit()
         }); // Mask all rx interrupts
-        self.emac.mmctxim.modify(|_, w| {
+        self.emac.mmctxim.write(|w| {
             w.gbf()
                 .set_bit()
                 .mcollgf()
@@ -383,70 +376,70 @@ impl EthernetDriver {
         // MII (communication between EMAC and EPHY)
         match self.system_clk_freq {
             // These are below the minimum and may cause hardware UB
-            PllOutputFrequency::_6mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
-            PllOutputFrequency::_12mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
+            PllOutputFrequency::_6mhz => self.emac.miiaddr.write(|w| w.cr()._20_35()),
+            PllOutputFrequency::_12mhz => self.emac.miiaddr.write(|w| w.cr()._20_35()),
             // These are nominal
-            PllOutputFrequency::_24mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
-            PllOutputFrequency::_30mhz => self.emac.miiaddr.modify(|_, w| w.cr()._20_35()),
-            PllOutputFrequency::_48mhz => self.emac.miiaddr.modify(|_, w| w.cr()._35_60()),
-            PllOutputFrequency::_60mhz => self.emac.miiaddr.modify(|_, w| w.cr()._35_60()),
-            PllOutputFrequency::_120mhz => self.emac.miiaddr.modify(|_, w| w.cr()._100_150()),
+            PllOutputFrequency::_24mhz => self.emac.miiaddr.write(|w| w.cr()._20_35()),
+            PllOutputFrequency::_30mhz => self.emac.miiaddr.write(|w| w.cr()._20_35()),
+            PllOutputFrequency::_48mhz => self.emac.miiaddr.write(|w| w.cr()._35_60()),
+            PllOutputFrequency::_60mhz => self.emac.miiaddr.write(|w| w.cr()._35_60()),
+            PllOutputFrequency::_120mhz => self.emac.miiaddr.write(|w| w.cr()._100_150()),
         }
 
         // Setup up EMAC transmission behavior
         match self.checksum_offload {
-            true => self.emac.cfg.modify(|_, w| w.ipc().set_bit()), // Checksum offload
-            false => self.emac.cfg.modify(|_, w| w.ipc().clear_bit()), // Use software checksum
+            true => self.emac.cfg.write(|w| w.ipc().set_bit()), // Checksum offload
+            false => self.emac.cfg.write(|w| w.ipc().clear_bit()), // Use software checksum
         }
 
         match self.preamble_length {
-            PreambleLength::_3 => self.emac.cfg.modify(|_, w| w.prelen()._3()),
-            PreambleLength::_5 => self.emac.cfg.modify(|_, w| w.prelen()._5()),
-            PreambleLength::_7 => self.emac.cfg.modify(|_, w| w.prelen()._7()),
+            PreambleLength::_3 => self.emac.cfg.write(|w| w.prelen()._3()),
+            PreambleLength::_5 => self.emac.cfg.write(|w| w.prelen()._5()),
+            PreambleLength::_7 => self.emac.cfg.write(|w| w.prelen()._7()),
         }
 
         match self.interframe_gap {
-            InterFrameGap::_40 => self.emac.cfg.modify(|_, w| w.ifg()._40()),
-            InterFrameGap::_48 => self.emac.cfg.modify(|_, w| w.ifg()._48()),
-            InterFrameGap::_56 => self.emac.cfg.modify(|_, w| w.ifg()._56()),
-            InterFrameGap::_64 => self.emac.cfg.modify(|_, w| w.ifg()._64()),
-            InterFrameGap::_72 => self.emac.cfg.modify(|_, w| w.ifg()._72()),
-            InterFrameGap::_80 => self.emac.cfg.modify(|_, w| w.ifg()._80()),
-            InterFrameGap::_88 => self.emac.cfg.modify(|_, w| w.ifg()._88()),
-            InterFrameGap::_96 => self.emac.cfg.modify(|_, w| w.ifg()._96()),
+            InterFrameGap::_40 => self.emac.cfg.write(|w| w.ifg()._40()),
+            InterFrameGap::_48 => self.emac.cfg.write(|w| w.ifg()._48()),
+            InterFrameGap::_56 => self.emac.cfg.write(|w| w.ifg()._56()),
+            InterFrameGap::_64 => self.emac.cfg.write(|w| w.ifg()._64()),
+            InterFrameGap::_72 => self.emac.cfg.write(|w| w.ifg()._72()),
+            InterFrameGap::_80 => self.emac.cfg.write(|w| w.ifg()._80()),
+            InterFrameGap::_88 => self.emac.cfg.write(|w| w.ifg()._88()),
+            InterFrameGap::_96 => self.emac.cfg.write(|w| w.ifg()._96()),
         }
 
         match self.backoff_limit {
-            BackOffLimit::_2 => self.emac.cfg.modify(|_, w| w.bl()._2()),
-            BackOffLimit::_8 => self.emac.cfg.modify(|_, w| w.bl()._8()),
-            BackOffLimit::_256 => self.emac.cfg.modify(|_, w| w.bl()._256()),
-            BackOffLimit::_1024 => self.emac.cfg.modify(|_, w| w.bl()._1024()),
+            BackOffLimit::_2 => self.emac.cfg.write(|w| w.bl()._2()),
+            BackOffLimit::_8 => self.emac.cfg.write(|w| w.bl()._8()),
+            BackOffLimit::_256 => self.emac.cfg.write(|w| w.bl()._256()),
+            BackOffLimit::_1024 => self.emac.cfg.write(|w| w.bl()._1024()),
         }
 
         // Set memory controller op mode
         match self.rx_store_fwd {
-            true => self.emac.dmaopmode.modify(|_, w| w.rsf().set_bit()),
-            false => self.emac.dmaopmode.modify(|_, w| w.rsf().clear_bit()),
+            true => self.emac.dmaopmode.write(|w| w.rsf().set_bit()),
+            false => self.emac.dmaopmode.write(|w| w.rsf().clear_bit()),
         }
         match self.tx_store_fwd {
-            true => self.emac.dmaopmode.modify(|_, w| w.tsf().set_bit()),
-            false => self.emac.dmaopmode.modify(|_, w| w.tsf().clear_bit()),
+            true => self.emac.dmaopmode.write(|w| w.tsf().set_bit()),
+            false => self.emac.dmaopmode.write(|w| w.tsf().clear_bit()),
         }
         match self.tx_thresh {
-            TXThresholdDMA::_16 => self.emac.dmaopmode.modify(|_, w| w.ttc()._16()),
-            TXThresholdDMA::_24 => self.emac.dmaopmode.modify(|_, w| w.ttc()._24()),
-            TXThresholdDMA::_32 => self.emac.dmaopmode.modify(|_, w| w.ttc()._32()),
-            TXThresholdDMA::_40 => self.emac.dmaopmode.modify(|_, w| w.ttc()._40()),
-            TXThresholdDMA::_64 => self.emac.dmaopmode.modify(|_, w| w.ttc()._64()),
-            TXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.ttc()._128()),
-            TXThresholdDMA::_192 => self.emac.dmaopmode.modify(|_, w| w.ttc()._192()),
-            TXThresholdDMA::_256 => self.emac.dmaopmode.modify(|_, w| w.ttc()._256()),
+            TXThresholdDMA::_16 => self.emac.dmaopmode.write(|w| w.ttc()._16()),
+            TXThresholdDMA::_24 => self.emac.dmaopmode.write(|w| w.ttc()._24()),
+            TXThresholdDMA::_32 => self.emac.dmaopmode.write(|w| w.ttc()._32()),
+            TXThresholdDMA::_40 => self.emac.dmaopmode.write(|w| w.ttc()._40()),
+            TXThresholdDMA::_64 => self.emac.dmaopmode.write(|w| w.ttc()._64()),
+            TXThresholdDMA::_128 => self.emac.dmaopmode.write(|w| w.ttc()._128()),
+            TXThresholdDMA::_192 => self.emac.dmaopmode.write(|w| w.ttc()._192()),
+            TXThresholdDMA::_256 => self.emac.dmaopmode.write(|w| w.ttc()._256()),
         }
         match self.rx_thresh {
-            RXThresholdDMA::_32 => self.emac.dmaopmode.modify(|_, w| w.rtc()._32()),
-            RXThresholdDMA::_64 => self.emac.dmaopmode.modify(|_, w| w.rtc()._64()),
-            RXThresholdDMA::_96 => self.emac.dmaopmode.modify(|_, w| w.rtc()._96()),
-            RXThresholdDMA::_128 => self.emac.dmaopmode.modify(|_, w| w.rtc()._128()),
+            RXThresholdDMA::_32 => self.emac.dmaopmode.write(|w| w.rtc()._32()),
+            RXThresholdDMA::_64 => self.emac.dmaopmode.write(|w| w.rtc()._64()),
+            RXThresholdDMA::_96 => self.emac.dmaopmode.write(|w| w.rtc()._96()),
+            RXThresholdDMA::_128 => self.emac.dmaopmode.write(|w| w.rtc()._128()),
         }
 
         // Set descriptor list pointers
@@ -477,26 +470,26 @@ impl EthernetDriver {
 
     /// Stop transmit EMAC then DMA (order is important)
     pub fn txstop(&mut self) {
-        self.emac.cfg.modify(|_, w| w.te().clear_bit());
-        self.emac.dmaopmode.modify(|_, w| w.st().clear_bit());
+        self.emac.cfg.write(|w| w.te().clear_bit());
+        self.emac.dmaopmode.write(|w| w.st().clear_bit());
     }
 
     /// Stop receive EMAC then DMA (order is important)
     pub fn rxstop(&mut self) {
-        self.emac.cfg.modify(|_, w| w.re().clear_bit());
-        self.emac.dmaopmode.modify(|_, w| w.sr().clear_bit());
+        self.emac.cfg.write(|w| w.re().clear_bit());
+        self.emac.dmaopmode.write(|w| w.sr().clear_bit());
     }
 
     /// Start transmit DMA then EMAC (order is important)
     pub fn txstart(&mut self) {
-        self.emac.dmaopmode.modify(|_, w| w.st().set_bit());
-        self.emac.cfg.modify(|_, w| w.te().set_bit());
+        self.emac.dmaopmode.write(|w| w.st().set_bit());
+        self.emac.cfg.write(|w| w.te().set_bit());
     }
 
     /// Start receive DMA then EMAC (order is important)
     pub fn rxstart(&mut self) {
-        self.emac.dmaopmode.modify(|_, w| w.sr().set_bit());
-        self.emac.cfg.modify(|_, w| w.re().set_bit());
+        self.emac.dmaopmode.write(|w| w.sr().set_bit());
+        self.emac.cfg.write(|w| w.re().set_bit());
     }
 
     /// Flush receive descriptors
@@ -528,7 +521,7 @@ impl EthernetDriver {
         // Tell the EMAC to read the register from the PHY
         let phy_addr: u8 = 0; // Use internal PHY explicitly
         unsafe {
-            self.emac.miiaddr.modify(|_, w| {
+            self.emac.miiaddr.write(|w| {
                 w.mii()
                     .bits(reg_addr) // PHY register to read from
                     .pla()
@@ -558,11 +551,11 @@ impl EthernetDriver {
 
         unsafe {
             // Set the data to send
-            self.emac.miidata.modify(|_, w| w.data().bits(value));
+            self.emac.miidata.write(|w| w.data().bits(value));
 
             // Tell the EMAC to write the register on the PHY
             let phy_addr: u8 = 0; // Use internal PHY explicitly
-            self.emac.miiaddr.modify(|_, w| {
+            self.emac.miiaddr.write(|w| {
                 w.mii()
                     .bits(reg_addr) // PHY register to read from
                     .pla()
@@ -587,7 +580,7 @@ impl EthernetDriver {
     /// Clear EMAC interrupts by setting their bits
     pub fn emacclear(&mut self) {
         // These have to be done all-at-once, because the summary bits are sticky and will reset otherwise
-        self.emac.dmaris.modify(|_, w| {
+        self.emac.dmaris.write(|w| {
             w.nis()
                 .set_bit()
                 .ais()
@@ -623,7 +616,7 @@ impl EthernetDriver {
     ///
     /// This may loop indefinitely if the EMAC fails to come out of reset.
     pub fn emac_reset(&mut self) {
-        self.emac.dmabusmod.modify(|_, w| w.swr().set_bit());
+        self.emac.dmabusmod.write(|w| w.swr().set_bit());
         while self.emac.dmabusmod.read().swr().bit_is_set() {}
     }
 
@@ -631,7 +624,6 @@ impl EthernetDriver {
     pub fn emac_status(&self) -> EmacStatus {
         EmacStatus::new(self.emac.status.read().bits())
     }
-
 }
 
 /// Choices of preamble length in bytes.
@@ -738,7 +730,7 @@ pub enum EthernetError {
 }
 
 /// EMACSTATUS register parser
-#[bitfield(bits=32)]
+#[bitfield(bits = 32)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 #[allow(missing_docs)]
 struct EmacStatusBitfield {
@@ -758,7 +750,7 @@ struct EmacStatusBitfield {
     _reserved3: B1,
     pub tx_fifo_not_empty: B1,
     pub tx_fifo_full: B1,
-    _reserved4: B7
+    _reserved4: B7,
 }
 
 /// Display intermediate to make the EmacStatusBitfield format in a sane way
@@ -780,7 +772,6 @@ pub struct EmacStatus {
 }
 
 impl EmacStatus {
-
     /// Parse register into debuggable format
     pub fn new(reg: u32) -> Self {
         let b = EmacStatusBitfield::from_bytes(reg.to_le_bytes());

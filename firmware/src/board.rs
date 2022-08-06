@@ -263,8 +263,8 @@ impl Board {
             drivers::ethernet::BackOffLimit::_1024,
             true,
             true,
-            drivers::ethernet::TXThresholdDMA::_32,
-            drivers::ethernet::RXThresholdDMA::_32,
+            drivers::ethernet::TXThresholdDMA::_64,
+            drivers::ethernet::RXThresholdDMA::_64,
             drivers::ethernet::BurstSizeDMA::_4,
             drivers::ethernet::BurstSizeDMA::_4,
         );

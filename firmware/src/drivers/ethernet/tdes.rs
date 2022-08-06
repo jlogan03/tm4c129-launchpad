@@ -55,6 +55,7 @@ impl TXDL {
                 }
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);
+                txdl.set_tdes0(TDES0::LS);
 
                 txdl.set_tdes0(TDES0::TCH);  // Next descriptor is chained
             }

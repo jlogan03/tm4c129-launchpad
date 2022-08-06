@@ -156,9 +156,9 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut buffer = [0_u8; RXBUFSIZE];
 
     // UDP socket
-    let mut udp = UDPSocket {
+    let udp = UDPSocket {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
-        src_ipaddr: IpV4Addr::new([10, 0, 0, 229]),
+        src_ipaddr: IpV4Addr::new([169, 254, 1, 229]),
         src_port: 8052,
         dst_ipaddr: IpV4Addr::new([10, 0, 0, 127]),
         // dst_ipaddr: IpV4Addr::BROADCAST,
@@ -247,6 +247,8 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         // }
 
         if loops % 30 == 0 {
+            // writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
+
             match dhcp_socket.transmit(
                 &mut board.enet,
                 dhcp_discover.to_be_bytes(),
@@ -260,7 +262,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             };
 
             // delay.delay_ms(1_u32);
-            writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
+            // writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
         }
 
         // Spam serial
@@ -276,7 +278,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
             // let txdl = &mut (board.enet.txdl);
             // writeln!(uart.0, "{:?}", txdl).unwrap_or_default();
-            
+
             let _ = uwriteln!(uart, "{:?}", board.enet.emac_status());
 
             let status = board.enet.emac.dmaris.read().rs().bits();

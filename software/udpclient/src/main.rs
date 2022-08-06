@@ -4,7 +4,7 @@ use std::{thread, time::Duration};
 fn main() {
     // 10.0.0.1 is the gateway and *.2 is the DHCP server
     // 0.0.0.0 -> broadcast
-    let dst_addr = "10.0.0.229:8052";
+    let dst_addr = "169.254.1.229:8052";
 
     // Bind a port
     let socket = UdpSocket::bind("0.0.0.0:8053").unwrap();

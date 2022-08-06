@@ -10,6 +10,7 @@ use tm4c129x_hal::{
 };
 
 use ufmt::derive::uDebug;
+use modular_bitfield::prelude::*;
 
 use self::rdes::*;
 pub use self::rdes::{RXBUFSIZE, RXDESCRS};
@@ -184,11 +185,11 @@ impl EthernetDriver {
                     // self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
                     self.txdl.give(); // Give this descriptor & buffer back to the DMA
 
+                    // Tell the DMA that there is demand for transmission by writing any value to the register
+                    self.emac.txpolld.write(|w| w.tpd().bits(1));
+
                     // Make sure the transmitter is enabled, since it may have been disabled by errors
                     self.txstart();
-
-                    // Tell the DMA that there is demand for transmission by writing any value to the register
-                    self.emac.txpolld.write(|w| w.tpd().bits(0));
 
                     return Ok(());
                 } else {
@@ -280,7 +281,6 @@ impl EthernetDriver {
 
         // Reset MAC again to latch configuration
         self.emac_reset();
-        // ephy_reset(pc);
 
         // -------------------- NON-LATCHING CONFIGURATION --------------------
         // This configuration is cleared on peripheral reset and takes effect more-or-less immediately during operation
@@ -290,7 +290,7 @@ impl EthernetDriver {
         self.txstop();
 
         // Assumptions
-        self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface)
+        // self.emac.cfg.modify(|_, w| w.ps().set_bit()); // Set port select (req. for MII/RMII PHY interface) READ ONLY
         self.emac.cfg.modify(|_, w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
         self.emac.dmabusmod.modify(|_, w| w.atds().set_bit()); // 8-word descriptor size
 
@@ -321,9 +321,9 @@ impl EthernetDriver {
 
         // Set source-address replacement using mac address 0 (the source address field exists in provided frames, but will be overwritten by the MAC)
         // This has to be done manually because svd2rust doesn't break out the SADDR field for some reason
-        // unsafe {
-        //     self.emac.cfg.modify(|r, w| w.bits(r.bits() | 0x03 << 28));
-        // }
+        unsafe {
+            self.emac.cfg.modify(|r, w| w.bits(r.bits() | 0x03 << 28));
+        }
 
         // Burst transfer limits
         // Not sure what the tradeoffs are
@@ -627,6 +627,11 @@ impl EthernetDriver {
         while self.emac.dmabusmod.read().swr().bit_is_set() {}
     }
 
+    /// Get formattable representation of EMACSTATUS register
+    pub fn emac_status(&self) -> EmacStatus {
+        EmacStatus::new(self.emac.status.read().bits())
+    }
+
 }
 
 /// Choices of preamble length in bytes.
@@ -730,4 +735,68 @@ pub enum EthernetError {
     FrameTooShort,
     /// Nothing to receive from RX descriptor buffers
     NothingToReceive,
+}
+
+/// EMACSTATUS register parser
+#[bitfield(bits=32)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[allow(missing_docs)]
+struct EmacStatusBitfield {
+    pub rx_engine: B1,
+    pub rx_frame_controller: B1,
+    _reserved0: B1,
+    pub rx_fifo_write_controller: B1,
+    pub rx_fifo_read_controller: B2,
+    _reserved1: B1,
+    pub rx_fifo_fill: B2,
+    _reserved2: B6,
+    pub tx_engine: B1,
+    pub tx_frame_controller: B2,
+    pub tx_paused: B1,
+    pub tx_fifo_read_controller: B2,
+    pub tx_fifo_write_controller: B1,
+    _reserved3: B1,
+    pub tx_fifo_not_empty: B1,
+    pub tx_fifo_full: B1,
+    _reserved4: B7
+}
+
+/// Display intermediate to make the EmacStatusBitfield format in a sane way
+#[derive(Clone, Copy, Debug, uDebug, Eq, PartialEq)]
+#[allow(missing_docs)]
+pub struct EmacStatus {
+    pub rx_engine: bool,
+    pub rx_frame_controller: bool,
+    pub rx_fifo_write_controller: bool,
+    pub rx_fifo_read_controller: u8,
+    pub rx_fifo_fill: u8,
+    pub tx_engine: bool,
+    pub tx_frame_controller: u8,
+    pub tx_paused: bool,
+    pub tx_fifo_read_controller: u8,
+    pub tx_fifo_write_controller: bool,
+    pub tx_fifo_not_empty: bool,
+    pub tx_fifo_full: bool,
+}
+
+impl EmacStatus {
+
+    /// Parse register into debuggable format
+    pub fn new(reg: u32) -> Self {
+        let b = EmacStatusBitfield::from_bytes(reg.to_le_bytes());
+        EmacStatus {
+            rx_engine: b.rx_engine() != 0,
+            rx_frame_controller: b.rx_frame_controller() != 0,
+            rx_fifo_write_controller: b.rx_fifo_write_controller() != 0,
+            rx_fifo_read_controller: b.rx_fifo_read_controller(),
+            rx_fifo_fill: b.rx_fifo_fill(),
+            tx_engine: b.tx_engine() != 0,
+            tx_frame_controller: b.tx_frame_controller(),
+            tx_paused: b.tx_paused() != 0,
+            tx_fifo_read_controller: b.tx_fifo_read_controller(),
+            tx_fifo_write_controller: b.tx_fifo_write_controller() != 0,
+            tx_fifo_not_empty: b.tx_fifo_not_empty() != 0,
+            tx_fifo_full: b.tx_fifo_full() != 0,
+        }
+    }
 }

@@ -22,8 +22,8 @@ fn main() {
             false
         }
     };
-    // let connected = true;
-    socket.set_broadcast(true).unwrap(); // Enable sending to broadcast address
+    let connected = true;
+    // socket.set_broadcast(true).unwrap(); // Enable sending to broadcast address
 
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
@@ -33,12 +33,12 @@ fn main() {
 
         // Receive all buffered frames
         if connected {
-            while let Ok((amt, src)) = socket.recv_from(&mut buf) {
-                println!("{i} Received {amt} bytes from {src} : {:?}", unsafe {
+            match socket.recv_from(&mut buf) {
+                Ok((amt, src)) => {println!("{i} Received {amt} bytes from {src} : {:?}", unsafe {
                     String::from_utf8_unchecked(buf[0..amt].to_vec())
-                });
+                });},
+                Err(x) => {println!("{i} recv error {x}");}
             };
-            println!("{i} Nothing to receive");
         } else {
             println!("{i} Skipping recv due to connection failure")
         }
@@ -50,16 +50,12 @@ fn main() {
         }
 
         // Broadcast
-        match socket.send_to(b"greetings", "255.255.255.255:8052") {
-            Ok(_) => (),//println!("{i} Broadcast send success"),
-            Err(x) => println!("{i} Data send failure: {x:?}"),
-        }
+        // match socket.send_to(b"greetings", "255.255.255.255:8052") {
+        //     Ok(_) => (),//println!("{i} Broadcast send success"),
+        //     Err(x) => println!("{i} Data send failure: {x:?}"),
+        // }
 
         i += 1;
-
-        if i % 1000 == 0 {
-            println!("Loop {i}");
-        }
 
         thread::sleep(Duration::from_millis(5000));
     }

@@ -53,10 +53,16 @@ impl TXDL {
                     txdl.set_next_pointer(txdl.txdladdr as u32);
                     txdl.set_tdes0(TDES0::TER);  // End-of-ring
                 }
+                
+                // Replace source MAC address in frame with value programmed into peripheral
+                txdl.set_tdes1(TDES1::SaiReplace);
 
                 // Enable ethernet checksum replacement
                 txdl.set_tdes0(TDES0::CRCR);
                 txdl.set_tdes0(TDES0::DC);  // Unintuitive, but we have to set this flag high per datasheet table 20-19 to get CRC replacement
+
+                // Enable IPV4 & UDPV4 checksum replacement
+                txdl.set_tdes0(TDES0::CicFull);
 
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);
@@ -341,7 +347,7 @@ pub enum TDES0 {
     /// Insert IPV4 checksum & TCP/UDP checksum without pseudoheader
     CicFrameOnly = 2 << 22,
     /// Insert IPV4 checksum & TCP/UDP checksum including pseudoheader (per the actual standard)
-    CicFull = 3 << 22,
+    CicFull = 0x00C00000,
     /// Transmit End of Ring: this descriptor is the last one in the ring
     TER = 1 << 21,
     /// Transmit Chain: the second pointer field is a pointer to the next descriptor, not a buffer

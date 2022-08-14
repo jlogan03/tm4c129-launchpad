@@ -61,18 +61,12 @@ pub struct EthernetDriver {
     /// System clock frequency
     pub system_clk_freq: PllOutputFrequency,
 
-    /// Use processor-offloaded checksum calc peripheral
-    pub checksum_offload: bool,
     /// Clock-sync preamble length
     pub preamble_length: PreambleLength,
     /// Inter-frame silence duration in bits
     pub interframe_gap: InterFrameGap,
     /// Exponential backoff saturation limit
     pub backoff_limit: BackOffLimit,
-    /// RX store-and-forward
-    pub rx_store_fwd: bool,
-    /// TX store-and-forward
-    pub tx_store_fwd: bool,
 
     // Direct Memory Access controller
     /// TX DMA transfer threshold
@@ -100,16 +94,12 @@ impl EthernetDriver {
     pub(crate) fn new<F>(
         pc: &PowerControl,
         ephy_reset: F,
-        // emac_reset: G,
         emac: EMAC0,
         system_clk_freq: PllOutputFrequency,
         src_macaddr: [u8; 6],
-        checksum_offload: bool,
         preamble_length: PreambleLength,
         interframe_gap: InterFrameGap,
         backoff_limit: BackOffLimit,
-        rx_store_fwd: bool,
-        tx_store_fwd: bool,
         tx_thresh: TXThresholdDMA,
         rx_thresh: RXThresholdDMA,
         rx_burst_size: BurstSizeDMA,
@@ -123,12 +113,9 @@ impl EthernetDriver {
         let mut enet: EthernetDriver = EthernetDriver {
             emac: emac,
             system_clk_freq: system_clk_freq,
-            checksum_offload: checksum_offload,
             preamble_length: preamble_length,
             interframe_gap: interframe_gap,
             backoff_limit: backoff_limit,
-            rx_store_fwd: rx_store_fwd,
-            tx_store_fwd: tx_store_fwd,
             rx_burst_size: rx_burst_size,
             tx_burst_size: tx_burst_size,
             rx_thresh: rx_thresh,
@@ -166,24 +153,19 @@ impl EthernetDriver {
             for _ in 0..TXDESCRS {
                 if self.txdl.is_owned() {
                     // We own the current descriptor; load our data into the buffer and tell the DMA to send it
-                    //    Clear checksum insertion control field
-                    let mut tdes = self.txdl.tdesref.read_volatile();
-                    tdes.v[0] &= !(0b11 << 22); // Clear bits 22 and 23 of TDES0 (the CIC part)
-                    self.txdl.tdesref.write_volatile(tdes);
                     //    Load data into buffer
                     let mut _buffer: *mut [u8; N] = self.txdl.get_buffer_pointer() as *mut [u8; N];
                     _buffer.write_volatile(data);
                     //    Set buffer length
                     self.txdl.set_buffer_size(N as u16);
-                    //    Set common settings
-                    self.txdl.set_tdes0(TDES0::CRCR); // Enable ethernet checksum replacement
-                                                      //    Set checksum insertion control for IP/UDP if it is provided
-                    if let Some(x) = cic {
-                        self.txdl.set_tdes0(x); // Full calculation of IPV4 and TCP/UDP checksums using pseudoheader
-                    }
-                    // self.txdl.set_tdes0(TDES0::TTSE); // Transmit IEEE-1588 64-bit timestamp
-                    // self.txdl.set_tdes1(TDES1::SaiReplace); // Replace source MAC address in frame with value programmed into peripheral
-                    self.txdl.give(); // Give this descriptor & buffer back to the DMA
+
+                    // Transmit IEEE-1588 64-bit timestamp
+                    // This should only be enabled for specific packets that are expecting it,
+                    // so it's staying disabled for now until that functionality is added
+                    // txdl.set_tdes0(TDES0::TTSE);
+
+                    // Give ownership of this descriptor & buffer back to the DMA
+                    self.txdl.give();
 
                     // Tell the DMA that there is demand for transmission by writing any value to the register
                     self.emac.txpolld.write(|w| w.tpd().bits(0));
@@ -419,15 +401,10 @@ impl EthernetDriver {
             BackOffLimit::_1024 => self.emac.cfg.write(|w| w.bl()._1024()),
         }
 
-        // Set memory controller op mode
-        match self.rx_store_fwd {
-            true => self.emac.dmaopmode.write(|w| w.rsf().set_bit()),
-            false => self.emac.dmaopmode.write(|w| w.rsf().clear_bit()),
-        }
-        match self.tx_store_fwd {
-            true => self.emac.dmaopmode.write(|w| w.tsf().set_bit()),
-            false => self.emac.dmaopmode.write(|w| w.tsf().clear_bit()),
-        }
+        // Always use store-and-forward because it is required for checksum offload
+        self.emac.dmaopmode.write(|w| w.tsf().set_bit());
+        self.emac.dmaopmode.write(|w| w.rsf().set_bit());
+
         match self.tx_thresh {
             TXThresholdDMA::_16 => self.emac.dmaopmode.write(|w| w.ttc()._16()),
             TXThresholdDMA::_24 => self.emac.dmaopmode.write(|w| w.ttc()._24()),

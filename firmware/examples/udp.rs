@@ -55,11 +55,8 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
         if let Some(x) = &buffer.get(num_bytes-4..num_bytes) {
             enet_checksum_bytes.copy_from_slice(&x);
         }
-        
         let enet_checksum = u32::from_be_bytes(enet_checksum_bytes);
         let _ = uwriteln!(uart, "\nReceived {} ethernet bytes with checksum {}", num_bytes, enet_checksum).unwrap_or_default();
-        drop(enet_checksum);
-        drop(enet_checksum_bytes);
 
         // Ethernet header
         let ethernet_header = EthernetHeader::read_bytes(buffer);
@@ -269,8 +266,8 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 }
             };
 
-            delay.delay_ms(10_u32);
-            writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
+            // delay.delay_ms(10_u32);
+            // writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
         }
 
         // Spam serial

@@ -285,14 +285,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             // writeln!(uart.0, "{:?}", txdl).unwrap_or_default();
 
             let _ = uwriteln!(uart, "{:?}", board.enet.emac_status());
-
-            let status = board.enet.emac.dmaris.read().rs().bits();
-            writeln!(uart.0, "EMAC DMA receive process state {status:?}").unwrap_or_default();
-
-            let status = board.enet.emac.dmaris.read().fbi().bit_is_set();
-            writeln!(uart.0, "EMAC DMA bus error? {status:?}").unwrap_or_default();
-            let status = board.enet.emac.dmaris.read().ae().bits();
-            writeln!(uart.0, "EMAC DMA access error type {status:?}\n\n").unwrap_or_default();
+            let _ = uwriteln!(uart, "{:?}", board.enet.dma_status());
         }
 
         // board.enet.emacclear(); // Clear clearable interrupts

@@ -1,15 +1,15 @@
 //! Drivers for TM4C129's EMAC/PHY media access control peripherals
 
 pub mod rdes; // RX ...
-pub mod socket;
-pub mod tdes; // TX descriptor ring definitions // UDP socket
+pub mod socket; // UDP socket
+pub mod status; // Status register parsers
+pub mod tdes; // TX descriptor ring definitions
 
 use tm4c129x_hal::{
     sysctl::{PllOutputFrequency, PowerControl},
     tm4c129x::{EMAC0, FLASH_CTRL},
 };
 
-use modular_bitfield::prelude::*;
 use ufmt::derive::uDebug;
 
 use self::rdes::*;
@@ -17,6 +17,8 @@ pub use self::rdes::{RXBUFSIZE, RXDESCRS};
 
 use self::tdes::*;
 pub use self::tdes::{TDES0, TXBUFSIZE, TXDESCRS};
+
+use self::status::{EmacStatus, DmaStatus};
 
 /// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EmacR;
@@ -581,6 +583,11 @@ impl EthernetDriver {
     pub fn emac_status(&self) -> EmacStatus {
         EmacStatus::new(self.emac.status.read().bits())
     }
+
+    /// Get formattable representation of EMACDMARIS register
+    pub fn dma_status(&self) -> DmaStatus {
+        DmaStatus::new(self.emac.dmaris.read().bits())
+    }
 }
 
 /// Choices of preamble length in bytes.
@@ -685,67 +692,4 @@ pub enum EthernetError {
     FrameTooShort,
     /// Nothing to receive from RX descriptor buffers
     NothingToReceive,
-}
-
-/// EMACSTATUS register parser
-#[bitfield(bits = 32)]
-#[derive(Clone, Copy, Eq, PartialEq)]
-#[allow(missing_docs)]
-struct EmacStatusBitfield {
-    pub rx_engine: B1,
-    pub rx_frame_controller: B1,
-    _reserved0: B1,
-    pub rx_fifo_write_controller: B1,
-    pub rx_fifo_read_controller: B2,
-    _reserved1: B1,
-    pub rx_fifo_fill: B2,
-    _reserved2: B6,
-    pub tx_engine: B1,
-    pub tx_frame_controller: B2,
-    pub tx_paused: B1,
-    pub tx_fifo_read_controller: B2,
-    pub tx_fifo_write_controller: B1,
-    _reserved3: B1,
-    pub tx_fifo_not_empty: B1,
-    pub tx_fifo_full: B1,
-    _reserved4: B7,
-}
-
-/// Display intermediate to make the EmacStatusBitfield format in a sane way
-#[derive(Clone, Copy, Debug, uDebug, Eq, PartialEq)]
-#[allow(missing_docs)]
-pub struct EmacStatus {
-    pub rx_engine: bool,
-    pub rx_frame_controller: bool,
-    pub rx_fifo_write_controller: bool,
-    pub rx_fifo_read_controller: u8,
-    pub rx_fifo_fill: u8,
-    pub tx_engine: bool,
-    pub tx_frame_controller: u8,
-    pub tx_paused: bool,
-    pub tx_fifo_read_controller: u8,
-    pub tx_fifo_write_controller: bool,
-    pub tx_fifo_not_empty: bool,
-    pub tx_fifo_full: bool,
-}
-
-impl EmacStatus {
-    /// Parse register into debuggable format
-    pub fn new(reg: u32) -> Self {
-        let b = EmacStatusBitfield::from_bytes(reg.to_le_bytes());
-        EmacStatus {
-            rx_engine: b.rx_engine() != 0,
-            rx_frame_controller: b.rx_frame_controller() != 0,
-            rx_fifo_write_controller: b.rx_fifo_write_controller() != 0,
-            rx_fifo_read_controller: b.rx_fifo_read_controller(),
-            rx_fifo_fill: b.rx_fifo_fill(),
-            tx_engine: b.tx_engine() != 0,
-            tx_frame_controller: b.tx_frame_controller(),
-            tx_paused: b.tx_paused() != 0,
-            tx_fifo_read_controller: b.tx_fifo_read_controller(),
-            tx_fifo_write_controller: b.tx_fifo_write_controller() != 0,
-            tx_fifo_not_empty: b.tx_fifo_not_empty() != 0,
-            tx_fifo_full: b.tx_fifo_full() != 0,
-        }
-    }
 }

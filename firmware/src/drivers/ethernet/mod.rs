@@ -189,6 +189,8 @@ impl EthernetDriver {
     pub fn receive(&mut self, buf: &mut [u8; RXBUFSIZE]) -> Result<usize, EthernetError> {
         // Make sure the receive engine is enabled
         self.rxstart();
+        // Poll the DMA in case it has suspended
+        self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(1) });
 
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
@@ -228,6 +230,9 @@ impl EthernetDriver {
 
             // Give this descriptor back to the DMA
             self.rxdl.give();
+
+            // Poll the DMA again in case it was stalled due to lack of free descriptors
+            self.emac.rxpolld.write(|w| w.rpd().bits(1));
 
             let bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
             Ok(bytes_received)
@@ -274,68 +279,45 @@ impl EthernetDriver {
         self.txstop();
 
         // Assumptions
-        self.emac.cfg.write(|w| w.dupm().set_bit()); // Full duplex mode (reassert after reset)
         self.emac.dmabusmod.write(|w| w.atds().set_bit()); // 8-word descriptor size
 
         // Set MAC address
         // Per mfr, addr0l must be set last because writing that register is the trigger
         // to latch the new address in hardware.
-        unsafe {
-            let addr = self.src_macaddr;
+        let addr = self.src_macaddr;
 
-            let mut hi_bytes = [0_u8; 2];
-            hi_bytes.copy_from_slice(&addr[4..=5]);
-            let hi = u16::from_le_bytes(hi_bytes);
+        let mut hi_bytes = [0_u8; 2];
+        hi_bytes.copy_from_slice(&addr[4..=5]);
+        let hi = u16::from_le_bytes(hi_bytes);
 
-            let mut lo_bytes = [0_u8; 4];
-            lo_bytes.copy_from_slice(&addr[0..=3]);
-            let lo = u32::from_le_bytes(lo_bytes);
+        let mut lo_bytes = [0_u8; 4];
+        lo_bytes.copy_from_slice(&addr[0..=3]);
+        let lo = u32::from_le_bytes(lo_bytes);
 
-            self.emac.addr0h.write(|w| w.addrhi().bits(hi));
-            self.emac.addr0l.write(|w| w.addrlo().bits(lo));
-        }
-
-        // Set source-address replacement using mac address 0 (the source address field exists in provided frames, but will be overwritten by the MAC)
-        // This has to be done manually because svd2rust doesn't break out the SADDR field for some reason
-        // It's not documented in the datasheet, but if this field is left blank, then the source address insertion policy is controlled by the descriptor
-        // unsafe {
-        //     self.emac.cfg.modify(|r, w| w.bits(r.bits() | 0x03 << 28));
-        // }
+        self.emac.addr0h.write(|w| unsafe { w.addrhi().bits(hi) });
+        self.emac.addr0l.write(|w| unsafe { w.addrlo().bits(lo) });
 
         // Burst transfer limits
         // Not sure what the tradeoffs are
         // Pretty sure this is only unsafe due to old-style conversion
         // to 5-bit integer; should be able to update upstream calc to be safe
-        let rxburst = match self.rx_burst_size {
-            // No 8x multiplier needed
-            BurstSizeDMA::_1 => 1,
-            BurstSizeDMA::_2 => 2,
-            BurstSizeDMA::_4 => 4,
-            BurstSizeDMA::_8 => 8,
-            BurstSizeDMA::_16 => 16,
-            BurstSizeDMA::_32 => 32,
-        }; // RX DMA controller max memory transfer size in words
-        let txburst = match self.rx_burst_size {
-            // No 8x multiplier needed
-            BurstSizeDMA::_1 => 1,
-            BurstSizeDMA::_2 => 2,
-            BurstSizeDMA::_4 => 4,
-            BurstSizeDMA::_8 => 8,
-            BurstSizeDMA::_16 => 16,
-            BurstSizeDMA::_32 => 32,
-        }; // If these are different sizes, unset fixed burst
-           // Set flag for whether programmable burst limits are the same for RX and TX
+        // Set flag for whether programmable burst limits are the same for RX and TX
+        let rxburst = (&self).rx_burst_size as u8;
+        let txburst = (&self).tx_burst_size as u8;
         match rxburst == txburst {
             true => self.emac.dmabusmod.write(|w| w.usp().clear_bit()), // RX and TX burst limits are the same
             false => self.emac.dmabusmod.write(|w| w.usp().set_bit()), // RX and TX burst limits are different
         }
         // Set actual programmable burst limits
-        unsafe {
-            self.emac.dmabusmod.write(|w| w.rpbl().bits(rxburst));
-            self.emac.dmabusmod.write(|w| w.pbl().bits(txburst));
-        };
+        self.emac
+            .dmabusmod
+            .write(|w| unsafe { w.rpbl().bits(rxburst) });
+        self.emac
+            .dmabusmod
+            .write(|w| unsafe { w.pbl().bits(txburst) });
 
         // Disable interrupts (set interrupt masks)
+        // Mask all rx interrupts
         self.emac.mmcrxim.write(|w| {
             w.algnerr()
                 .set_bit()
@@ -345,7 +327,8 @@ impl EthernetDriver {
                 .set_bit()
                 .ucgf()
                 .set_bit()
-        }); // Mask all rx interrupts
+        });
+        // Mask all tx interrupts
         self.emac.mmctxim.write(|w| {
             w.gbf()
                 .set_bit()
@@ -355,7 +338,7 @@ impl EthernetDriver {
                 .set_bit()
                 .scollgf()
                 .set_bit()
-        }); // Mask all tx interrupts
+        });
 
         // MII (communication between EMAC and EPHY)
         match self.system_clk_freq {
@@ -374,10 +357,6 @@ impl EthernetDriver {
 
         // No reason not to offload checksums; always faster than software
         self.emac.cfg.write(|w| w.ipc().set_bit());
-        // match self.checksum_offload {
-        //     true => self.emac.cfg.write(|w| w.ipc().set_bit()), // Checksum offload
-        //     false => self.emac.cfg.write(|w| w.ipc().clear_bit()), // Use software checksum
-        // }
 
         match self.preamble_length {
             PreambleLength::_3 => self.emac.cfg.write(|w| w.prelen()._3()),
@@ -402,10 +381,6 @@ impl EthernetDriver {
             BackOffLimit::_256 => self.emac.cfg.write(|w| w.bl()._256()),
             BackOffLimit::_1024 => self.emac.cfg.write(|w| w.bl()._1024()),
         }
-
-        // Always use store-and-forward because it is required for checksum offload
-        self.emac.dmaopmode.write(|w| w.tsf().set_bit());
-        self.emac.dmaopmode.write(|w| w.rsf().set_bit());
 
         match self.tx_thresh {
             TXThresholdDMA::_16 => self.emac.dmaopmode.write(|w| w.ttc()._16()),
@@ -612,7 +587,7 @@ impl EthernetDriver {
 ///
 /// This is the number of alternating 0-1 bits transmitted at the start of each frame
 /// in order to synchronize clocks between the transmitter and receiver.
-#[derive(uDebug)]
+#[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum PreambleLength {
     _3,
@@ -623,7 +598,7 @@ pub enum PreambleLength {
 /// Choices of interframe gap length in bits.
 ///
 /// This is the duration of radio-silence used to signal the end of a transmission frame.
-#[derive(uDebug)]
+#[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum InterFrameGap {
     _40,
@@ -640,7 +615,7 @@ pub enum InterFrameGap {
 ///
 /// This is a cap on the rescheduling duration given by the exponential back-off algorithm
 /// in the event of repeated collisions during transmission.
-#[derive(uDebug)]
+#[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum BackOffLimit {
     _2,
@@ -652,7 +627,7 @@ pub enum BackOffLimit {
 /// TX memory transfer threshold for memory controller
 ///
 /// This is the number of bytes in the buffer required to trigger a transfer.
-#[derive(uDebug)]
+#[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum TXThresholdDMA {
     _16,
@@ -668,7 +643,7 @@ pub enum TXThresholdDMA {
 /// RX memory transfer threshold for memory controller
 ///
 /// This is the number of bytes in the buffer required to trigger a transfer.
-#[derive(uDebug)]
+#[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum RXThresholdDMA {
     _32,
@@ -678,16 +653,17 @@ pub enum RXThresholdDMA {
 }
 
 /// RX memory transfer burst size in 32-bit words
-#[derive(uDebug)]
+#[derive(uDebug, Debug, Eq, PartialEq)]
 #[allow(missing_docs)]
+#[repr(u8)]
 pub enum BurstSizeDMA {
     // Settings that do not require 8x flag
-    _1,
-    _2,
-    _4,
-    _8,
-    _16,
-    _32,
+    _1 = 1,
+    _2 = 2,
+    _4 = 4,
+    _8 = 8,
+    _16 = 16,
+    _32 = 32,
     // Settings that do require 8x flag
     // The 8x flag must match both RX and TX burst size, which introduces complicated logic
     // that is difficult to implement without introducing panic branches or unexpected behavior

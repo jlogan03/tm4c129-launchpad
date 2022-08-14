@@ -266,8 +266,8 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 }
             };
 
-            // delay.delay_ms(10_u32);
-            // writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
+            delay.delay_ms(50_u32);
+            writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
         }
 
         // Spam serial

@@ -283,14 +283,16 @@ impl EthernetDriver {
         unsafe {
             let addr = self.src_macaddr;
 
-            self.emac.addr2h.write(|w| w.addrhi().bits(addr[5] as u16));
-            self.emac.addr2l.write(|w| w.addrlo().bits(addr[4] as u32));
+            let mut hi_bytes = [0_u8; 2];
+            hi_bytes.copy_from_slice(&addr[4..=5]);
+            let hi = u16::from_le_bytes(hi_bytes);
 
-            self.emac.addr1h.write(|w| w.addrhi().bits(addr[3] as u16));
-            self.emac.addr1l.write(|w| w.addrlo().bits(addr[2] as u32));
+            let mut lo_bytes = [0_u8; 4];
+            lo_bytes.copy_from_slice(&addr[0..=3]);
+            let lo = u32::from_le_bytes(lo_bytes);
 
-            self.emac.addr0h.write(|w| w.addrhi().bits(addr[1] as u16));
-            self.emac.addr0l.write(|w| w.addrlo().bits(addr[0] as u32));
+            self.emac.addr0h.write(|w| w.addrhi().bits(hi));
+            self.emac.addr0l.write(|w| w.addrlo().bits(lo));
         }
 
         // Set source-address replacement using mac address 0 (the source address field exists in provided frames, but will be overwritten by the MAC)

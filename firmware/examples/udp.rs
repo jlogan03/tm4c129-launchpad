@@ -166,7 +166,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     let mut buffer = [0_u8; RXBUFSIZE];
 
     // UDP socket
-    let udp = UDPSocket {
+    let mut udp = UDPSocket {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
         src_ipaddr: IpV4Addr::new([169, 254, 1, 229]),
         src_port: 8052,
@@ -209,28 +209,28 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
     // drop(arp_announcement);
 
-    // UDP socket for DHCP
-    let mut dhcp_socket = UDPSocket {
-        src_macaddr: udp.src_macaddr,
-        src_ipaddr: IpV4Addr::ANY,
-        src_port: DHCP_CLIENT_PORT,
-        dst_ipaddr: IpV4Addr::BROADCAST,
-        dst_port: DHCP_SERVER_PORT,
-        id: 5147,
-    };
+    // // UDP socket for DHCP
+    // let mut dhcp_socket = UDPSocket {
+    //     src_macaddr: udp.src_macaddr,
+    //     src_ipaddr: IpV4Addr::ANY,
+    //     src_port: DHCP_CLIENT_PORT,
+    //     dst_ipaddr: IpV4Addr::BROADCAST,
+    //     dst_port: DHCP_SERVER_PORT,
+    //     id: 5147,
+    // };
 
-    // let dhcp_inform = DhcpFixedPayload::new_inform(udp.src_ipaddr, udp.src_macaddr, 13517);
-    let dhcp_discover = DhcpFixedPayload::new(
-        true,
-        DhcpOperation::Request,
-        DhcpMessageKind::Discover,
-        13519,
-        true,
-        IpV4Addr::ANY,
-        IpV4Addr::ANY,
-        IpV4Addr::ANY,
-        udp.src_macaddr,
-    );
+    // // let dhcp_inform = DhcpFixedPayload::new_inform(udp.src_ipaddr, udp.src_macaddr, 13517);
+    // let dhcp_discover = DhcpFixedPayload::new(
+    //     true,
+    //     DhcpOperation::Request,
+    //     DhcpMessageKind::Discover,
+    //     13519,
+    //     true,
+    //     IpV4Addr::ANY,
+    //     IpV4Addr::ANY,
+    //     IpV4Addr::ANY,
+    //     udp.src_macaddr,
+    // );
 
     // drop(dhcp_discover);
     // board.enet.emac.cfg.write(|x| x.loopbm().set_bit());
@@ -255,20 +255,20 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         if loops % 30 == 0 {
             // writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
 
-            match dhcp_socket.transmit(&mut board.enet, dhcp_discover.to_be_bytes()) {
-                Ok(_) => {
-                    let _ = uwriteln!(
-                        uart,
-                        "\nSent DHCP DISCOVER {:?} with length {:?}",
-                        &dhcp_discover,
-                        DhcpFixedPayload::BYTE_LEN
-                    )
-                    .unwrap_or_default();
-                }
-                Err(x) => {
-                    let _ = uwriteln!(uart, "DHCP TX error: {:?}", x).unwrap_or_default();
-                }
-            };
+            // match dhcp_socket.transmit(&mut board.enet, dhcp_discover.to_be_bytes()) {
+            //     Ok(_) => {
+            //         let _ = uwriteln!(
+            //             uart,
+            //             "\nSent DHCP DISCOVER {:?} with length {:?}",
+            //             &dhcp_discover,
+            //             DhcpFixedPayload::BYTE_LEN
+            //         )
+            //         .unwrap_or_default();
+            //     }
+            //     Err(x) => {
+            //         let _ = uwriteln!(uart, "DHCP TX error: {:?}", x).unwrap_or_default();
+            //     }
+            // };
 
             delay.delay_ms(50_u32);
             writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();

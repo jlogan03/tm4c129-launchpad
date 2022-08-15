@@ -52,11 +52,17 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     while let Ok(num_bytes) = enet.receive(buffer) {
         // We received ethernet data
         let mut enet_checksum_bytes = [0_u8; 4];
-        if let Some(x) = &buffer.get(num_bytes-4..num_bytes) {
+        if let Some(x) = &buffer.get(num_bytes - 4..num_bytes) {
             enet_checksum_bytes.copy_from_slice(&x);
         }
         let enet_checksum = u32::from_be_bytes(enet_checksum_bytes);
-        let _ = uwriteln!(uart, "\nReceived {} ethernet bytes with checksum {}", num_bytes, enet_checksum).unwrap_or_default();
+        let _ = uwriteln!(
+            uart,
+            "\nReceived {} ethernet bytes with checksum {}",
+            num_bytes,
+            enet_checksum
+        )
+        .unwrap_or_default();
 
         // Ethernet header
         let ethernet_header = EthernetHeader::read_bytes(buffer);
@@ -111,7 +117,6 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                     };
 
                     match enet.transmit(arp_response.to_be_bytes()) {
-                        // Do not insert IP/UDP checksums for ARP packet
                         Ok(_) => {
                             let _ =
                                 uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data)
@@ -172,38 +177,35 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     };
 
     // Send an ARP announcement that we are taking our assigned IP address
-    // let arp_announcement: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
-    //     header: EthernetHeader {
-    //         dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
-    //         src_macaddr: udp.src_macaddr,
-    //         ethertype: EtherType::Arp,
-    //     },
-    //     data: ArpPayload::new(
-    //         udp.src_macaddr,
-    //         udp.src_ipaddr,
-    //         MacAddr::ANY,
-    //         udp.src_ipaddr,
-    //         ArpOperation::Request,
-    //     ),
-    //     checksum: 0,
-    // };
+    let arp_announcement: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+        header: EthernetHeader {
+            dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
+            src_macaddr: udp.src_macaddr,
+            ethertype: EtherType::Arp,
+        },
+        data: ArpPayload::new(
+            udp.src_macaddr,
+            udp.src_ipaddr,
+            MacAddr::ANY,
+            udp.src_ipaddr,
+            ArpOperation::Request,
+        ),
+        checksum: 0,
+    };
 
-    // match &board
-    //     .enet
-    //     .transmit(arp_announcement.to_be_bytes(), Some(TDES0::CicIPV4))
-    // {
-    //     Ok(_) => {
-    //         let _ = uwriteln!(
-    //             uart,
-    //             "\nSent ARP announcement: {:?}",
-    //             &arp_announcement.data
-    //         )
-    //         .unwrap_or_default();
-    //     }
-    //     Err(x) => {
-    //         let _ = uwriteln!(uart, "\nEthernet TX error: {:?}", x).unwrap_or_default();
-    //     }
-    // };
+    match &board.enet.transmit(arp_announcement.to_be_bytes()) {
+        Ok(_) => {
+            let _ = uwriteln!(
+                uart,
+                "\nSent ARP announcement: {:?}",
+                &arp_announcement.data
+            )
+            .unwrap_or_default();
+        }
+        Err(x) => {
+            let _ = uwriteln!(uart, "\nEthernet TX error: {:?}", x).unwrap_or_default();
+        }
+    };
 
     // drop(arp_announcement);
 
@@ -237,29 +239,31 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         delay.delay_ms(dt);
         poll_ethernet(&mut board.enet, &mut uart, &udp, &mut buffer);
 
-
         // Test UDP transmit once per second
-        // if loops % (1000 / dt as u64) == 0 {
-        //     match udp.transmit(&mut board.enet, *b"hello world! ... ... ...") {
-        //         Ok(_) => {
-        //             let _ =
-        //                 uwriteln!(uart, "\nSent UDP frame ID {:?}", &udp.id).unwrap_or_default();
-        //         }
-        //         Err(x) => {
-        //             let _ = uwriteln!(uart, "UDP TX error: {:?}", x).unwrap_or_default();
-        //         }
-        //     };
-        // }
+        if loops % (1000 / dt as u64) == 0 {
+            match udp.transmit(&mut board.enet, *b"hello world! ... ... ...") {
+                Ok(_) => {
+                    let _ =
+                        uwriteln!(uart, "\nSent UDP frame ID {:?}", &udp.id).unwrap_or_default();
+                }
+                Err(x) => {
+                    let _ = uwriteln!(uart, "UDP TX error: {:?}", x).unwrap_or_default();
+                }
+            };
+        }
 
         if loops % 30 == 0 {
             // writeln!(uart.0, "{:?}", &board.enet.txdl).unwrap_or_default();
 
-            match dhcp_socket.transmit(
-                &mut board.enet,
-                dhcp_discover.to_be_bytes(),
-            ) {
+            match dhcp_socket.transmit(&mut board.enet, dhcp_discover.to_be_bytes()) {
                 Ok(_) => {
-                    let _ = uwriteln!(uart, "\nSent DHCP DISCOVER {:?} with length {:?}", &dhcp_discover, DhcpFixedPayload::BYTE_LEN).unwrap_or_default();
+                    let _ = uwriteln!(
+                        uart,
+                        "\nSent DHCP DISCOVER {:?} with length {:?}",
+                        &dhcp_discover,
+                        DhcpFixedPayload::BYTE_LEN
+                    )
+                    .unwrap_or_default();
                 }
                 Err(x) => {
                     let _ = uwriteln!(uart, "DHCP TX error: {:?}", x).unwrap_or_default();

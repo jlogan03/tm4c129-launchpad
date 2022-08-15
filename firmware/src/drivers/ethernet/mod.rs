@@ -138,11 +138,10 @@ impl EthernetDriver {
     /// Attempt to send an ethernet frame that has been reduced to bytes
     pub fn transmit<const N: usize>(
         &mut self,
-        data: [u8; N],
-        cic: Option<TDES0>,
+        data: [u8; N]
     ) -> Result<(), EthernetError> {
         // Check if data fits in buffer
-        if N > TXBUFSIZE / 4 {
+        if N > TXBUFSIZE {
             return Err(EthernetError::BufferOverflow);
         }
         // Check if data meets minimum length required for ethernet frame
@@ -189,10 +188,10 @@ impl EthernetDriver {
 
     /// Receive a frame of unknown size that may be up to 1522 bytes
     pub fn receive(&mut self, buf: &mut [u8; RXBUFSIZE]) -> Result<usize, EthernetError> {
+        // Poll the DMA in case it has suspended
+        self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
         // Make sure the receive engine is enabled
         self.rxstart();
-        // Poll the DMA in case it has suspended
-        self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(1) });
 
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
@@ -201,6 +200,12 @@ impl EthernetDriver {
             for _ in 0..RXDESCRS {
                 let owned = self.rxdl.is_owned();
                 num_owned += owned as usize;
+
+                // Poll the DMA again in case it was stalled due to lack of free descriptors
+                self.emac.rxpolld.write(|w| w.rpd().bits(0));
+                // Make sure the receive engine is enabled
+                self.rxstart();
+
                 if owned && (self.rxdl.get_rdes0(RDES0::FS) != 0) {
                     break;
                 } else {
@@ -232,9 +237,6 @@ impl EthernetDriver {
 
             // Give this descriptor back to the DMA
             self.rxdl.give();
-
-            // Poll the DMA again in case it was stalled due to lack of free descriptors
-            self.emac.rxpolld.write(|w| w.rpd().bits(1));
 
             let bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
             Ok(bytes_received)
@@ -286,14 +288,12 @@ impl EthernetDriver {
         // Set MAC address
         // Per mfr, addr0l must be set last because writing that register is the trigger
         // to latch the new address in hardware.
-        let addr = self.src_macaddr;
-
         let mut hi_bytes = [0_u8; 2];
-        hi_bytes.copy_from_slice(&addr[4..=5]);
+        hi_bytes.copy_from_slice(&self.src_macaddr[4..=5]);
         let hi = u16::from_le_bytes(hi_bytes);
 
         let mut lo_bytes = [0_u8; 4];
-        lo_bytes.copy_from_slice(&addr[0..=3]);
+        lo_bytes.copy_from_slice(&self.src_macaddr[0..=3]);
         let lo = u32::from_le_bytes(lo_bytes);
 
         self.emac.addr0h.write(|w| unsafe { w.addrhi().bits(hi) });
@@ -404,10 +404,10 @@ impl EthernetDriver {
         // Set descriptor list pointers
         self.emac
             .txdladdr
-            .write(|w| unsafe { w.bits(self.txdl.txdladdr as u32) }); // List start address
+            .write(|w| unsafe { w.bits(self.txdl.txdladdr as u32) });
         self.emac
             .rxdladdr
-            .write(|w| unsafe { w.bits(self.rxdl.rxdladdr as u32) }); // List start address
+            .write(|w| unsafe { w.bits(self.rxdl.rxdladdr as u32) });
 
         // Clear PHY and MAC interrupts
         self.phyclear();

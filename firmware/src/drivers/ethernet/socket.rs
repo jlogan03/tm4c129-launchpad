@@ -4,7 +4,6 @@ use catnip::{enet::*, ip::*, udp::*, *};
 
 use core::ptr::read_volatile;
 
-use super::tdes::TDES0;
 use super::{EthernetDriver, EthernetError};
 
 /// Thin adapter layer to generate UDP packets without constantly passing the address info around
@@ -31,8 +30,9 @@ impl UDPSocket {
         data: [u8; N],
     ) -> Result<(), EthernetError>
     where
-        [u8; EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
+        [(); EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
         [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
+        [(); UdpFrame::<ByteArray<N>>::BYTE_LEN]:,
     {
         self.id = self.id.wrapping_add(1);
         let frame = build_frame(
@@ -46,7 +46,7 @@ impl UDPSocket {
         )
         .to_be_bytes();
 
-        unsafe { read_volatile(&enet.transmit(frame, Some(TDES0::CicFrameOnly))) }
+        unsafe { read_volatile(&enet.transmit(frame)) }
     }
 }
 
@@ -60,28 +60,40 @@ pub fn build_frame<const N: usize>(
     dst_ipaddr: IpV4Addr,
     dst_port: u16,
     id: u16,
-) -> EthernetFrame<IpV4Frame<UdpFrame<ByteArray<N>>>> where [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]: {
-    let mut frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
+) -> EthernetFrame<IpV4Frame<UdpFrame<ByteArray<N>>>>
+where
+    [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
+    [(); UdpFrame::<ByteArray<N>>::BYTE_LEN]:,
+{
+    let mut ip_header = IpV4Header {
+        version_and_header_length: VersionAndHeaderLength::new()
+            .with_version(4)
+            .with_header_length((IpV4Header::BYTE_LEN / 4) as u8),
+        dscp: DSCP::Standard,
+        total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
+        identification: id,
+        fragmentation: Fragmentation::default(),
+        time_to_live: 64,
+        protocol: Protocol::Udp,
+        checksum: 0,
+        src_ipaddr: src_ipaddr,
+        dst_ipaddr: dst_ipaddr,
+    };
+    // Standard method for calculating IP checksum
+    // Ideally, this would be done by the checksum offload engine, but so far
+    // the checksum engine neither runs nor gives any specific error, so we're
+    // doing it in software for now. The UDP checksum is optional and involves
+    // a pseudoheader structure, so we skip it for now.
+    ip_header.checksum = calc_ip_checksum(&ip_header.to_be_bytes());
+
+    let frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
         header: EthernetHeader {
             dst_macaddr: MacAddr::BROADCAST, // Always broadcast for IP frames
             src_macaddr: src_macaddr,
             ethertype: EtherType::IpV4,
         },
         data: IpV4Frame::<UdpFrame<ByteArray<N>>> {
-            header: IpV4Header {
-                version_and_header_length: VersionAndHeaderLength::new()
-                    .with_version(4)
-                    .with_header_length((IpV4Header::BYTE_LEN / 4) as u8),
-                dscp: DSCP::Standard,
-                total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
-                identification: id,
-                fragmentation: Fragmentation::default(),
-                time_to_live: 64,
-                protocol: Protocol::Udp,
-                checksum: 0,
-                src_ipaddr: src_ipaddr,
-                dst_ipaddr: dst_ipaddr,
-            },
+            header: ip_header,
             data: UdpFrame::<ByteArray<N>> {
                 header: UdpHeader {
                     src_port: src_port,
@@ -92,13 +104,13 @@ pub fn build_frame<const N: usize>(
                 data: ByteArray::<N>(data),
             },
         },
-        checksum: 0_u32,
+        checksum: 0_u32,  // This one will be replaced by the CRC engine
     };
 
     // Write IP and UDP checksums
+    // frame.data.data.header.checksum = calc_ip_checksum(&frame.data.data.to_be_bytes());
     // let ip_bytes: [u8; IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN] = frame.data.to_be_bytes();
     // frame.data.header.checksum = calc_ip_checksum(&ip_bytes);
-    // frame.data.data.header.checksum = calc_ip_checksum(&frame.data.data.to_be_bytes());
 
     frame
 }

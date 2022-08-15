@@ -23,7 +23,7 @@ use tm4c129x_hal::time::Bps;
 use catnip::{arp::*, dhcp::*, enet::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, EthernetDriver, RXBUFSIZE, TDES0},
+    drivers::ethernet::{socket::UDPSocket, EthernetDriver, RXBUFSIZE},
 };
 
 struct SerialUWriteable<UART, TX, RX, RTS, CTS>(Serial<UART, TX, RX, RTS, CTS>);
@@ -110,7 +110,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                         checksum: 0,
                     };
 
-                    match enet.transmit(arp_response.to_be_bytes(), Some(TDES0::CicFull)) {
+                    match enet.transmit(arp_response.to_be_bytes()) {
                         // Do not insert IP/UDP checksums for ARP packet
                         Ok(_) => {
                             let _ =

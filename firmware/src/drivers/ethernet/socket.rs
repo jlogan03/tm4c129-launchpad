@@ -14,6 +14,8 @@ pub struct UDPSocket {
     pub src_ipaddr: IpV4Addr,
     /// Source port
     pub src_port: u16,
+    /// Destination mac address
+    pub dst_macaddr: MacAddr,
     /// Destination IP address
     pub dst_ipaddr: IpV4Addr,
     /// Destination port
@@ -28,7 +30,7 @@ impl UDPSocket {
         &mut self,
         enet: &mut EthernetDriver,
         data: [u8; N],
-    ) -> Result<(), EthernetError>
+    ) -> Result<EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>, EthernetError>
     where
         [(); EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
         [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
@@ -41,12 +43,15 @@ impl UDPSocket {
             self.src_ipaddr,
             self.src_port,
             self.dst_ipaddr,
+            self.dst_macaddr,
             self.dst_port,
             self.id.clone(),
-        )
-        .to_be_bytes();
+        );
 
-        unsafe { read_volatile(&enet.transmit(frame)) }
+        match unsafe { read_volatile(&enet.transmit(frame.to_be_bytes())) } {
+            Ok(_) => Ok(frame),
+            Err(x) => Err(x)
+        }
     }
 }
 
@@ -58,6 +63,7 @@ pub fn build_frame<const N: usize>(
     src_ipaddr: IpV4Addr,
     src_port: u16,
     dst_ipaddr: IpV4Addr,
+    dst_macaddr: MacAddr,
     dst_port: u16,
     id: u16,
 ) -> EthernetFrame<IpV4Frame<UdpFrame<ByteArray<N>>>>
@@ -65,35 +71,28 @@ where
     [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
     [(); UdpFrame::<ByteArray<N>>::BYTE_LEN]:,
 {
-    let mut ip_header = IpV4Header {
-        version_and_header_length: VersionAndHeaderLength::new()
-            .with_version(4)
-            .with_header_length((IpV4Header::BYTE_LEN / 4) as u8),
-        dscp: DSCP::Standard,
-        total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
-        identification: id,
-        fragmentation: Fragmentation::default(),
-        time_to_live: 64,
-        protocol: Protocol::Udp,
-        checksum: 0,
-        src_ipaddr: src_ipaddr,
-        dst_ipaddr: dst_ipaddr,
-    };
-    // Standard method for calculating IP checksum
-    // Ideally, this would be done by the checksum offload engine, but so far
-    // the checksum engine neither runs nor gives any specific error, so we're
-    // doing it in software for now. The UDP checksum is optional and involves
-    // a pseudoheader structure, so we skip it for now.
-    ip_header.checksum = calc_ip_checksum(&ip_header.to_be_bytes());
-
-    let frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
+    // Standard method for calculating UDP checksum using pseudoheader
+    let mut frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
         header: EthernetHeader {
-            dst_macaddr: MacAddr::BROADCAST, // Always broadcast for IP frames
+            dst_macaddr: dst_macaddr, // Always broadcast for IP frames
             src_macaddr: src_macaddr,
             ethertype: EtherType::IpV4,
         },
         data: IpV4Frame::<UdpFrame<ByteArray<N>>> {
-            header: ip_header,
+            header: IpV4Header {
+                version_and_header_length: VersionAndHeaderLength::new()
+                    .with_version(4)
+                    .with_header_length((IpV4Header::BYTE_LEN / 4) as u8),
+                dscp: DSCP::Standard,
+                total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
+                identification: id,
+                fragmentation: Fragmentation::default(),
+                time_to_live: 64,
+                protocol: Protocol::Udp,
+                checksum: 0,
+                src_ipaddr: src_ipaddr,
+                dst_ipaddr: dst_ipaddr,
+            },
             data: UdpFrame::<ByteArray<N>> {
                 header: UdpHeader {
                     src_port: src_port,
@@ -104,13 +103,18 @@ where
                 data: ByteArray::<N>(data),
             },
         },
-        checksum: 0_u32,  // This one will be replaced by the CRC engine
+        checksum: 0_u32, // This one will be replaced by the CRC engine
     };
 
     // Write IP and UDP checksums
-    // frame.data.data.header.checksum = calc_ip_checksum(&frame.data.data.to_be_bytes());
-    // let ip_bytes: [u8; IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN] = frame.data.to_be_bytes();
-    // frame.data.header.checksum = calc_ip_checksum(&ip_bytes);
+
+    // Standard method for calculating IP checksum
+    // Ideally, this would be done by the checksum offload engine, but so far
+    // the checksum engine neither runs nor gives any specific error, so we're
+    // doing it in software for now. The UDP checksum is optional and involves
+    // a pseudoheader structure, so we skip it for now.
+    frame.data.data.header.checksum = !calc_udp_checksum(&frame.data);
+    frame.data.header.checksum = !calc_ip_checksum(&frame.data.header.to_be_bytes());
 
     frame
 }

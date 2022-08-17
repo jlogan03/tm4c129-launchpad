@@ -85,7 +85,43 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                 let dhcp_bytes = &buffer[UDPSTART + UdpHeader::BYTE_LEN..];
                                 let dhcp_fixed_payload = DhcpFixedPayload::read_bytes(&dhcp_bytes);
                                 uwriteln!(uart, "{:?}", dhcp_fixed_payload);
-                            }
+                            },
+                            x if x == udp.src_port => {
+                                // If this is a UDP frame from the desktop machine, send it back
+                                let mut frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<{64 - UDPSTART - 4}>>>>::read_bytes(buffer);
+                                let src_macaddr = frame.header.src_macaddr;
+                                let dst_macaddr = frame.header.dst_macaddr;
+                                let src_ipaddr = frame.data.header.src_ipaddr;
+                                let dst_ipaddr = frame.data.header.dst_ipaddr;
+                                let src_port = frame.data.data.header.src_port;
+                                let dst_port = frame.data.data.header.dst_port;
+
+                                frame.header.dst_macaddr = src_macaddr;
+                                frame.header.src_macaddr = dst_macaddr;
+
+                                frame.data.header.dst_ipaddr = src_ipaddr;
+                                frame.data.header.src_ipaddr = dst_ipaddr;
+
+                                frame.data.data.header.dst_port = src_port;
+                                frame.data.data.header.src_port = dst_port;
+
+                                match enet.transmit(frame.to_be_bytes()) {
+                                    Ok(_) => {let _ = uwriteln!(uart, "Returned UDP packet: {:?}\n{:?}\n{:?}", frame.header, frame.data.header, frame.data.data.header);},
+                                    Err(x) => {let _ = uwriteln!(uart, "Error returning UDP packet: {:?}", x);}
+                                };
+
+                                // let ip_checksum_recvd = frame.data.header.checksum;
+                                // let udp_checksum_recvd = frame.data.data.header.checksum;
+
+                                frame.data.header.checksum = 0;
+                                let ip_checksum_calc = !calc_ip_checksum(&frame.data.header.to_be_bytes());
+                                frame.data.data.header.checksum = 0;
+                                let udp_checksum_calc = !calc_udp_checksum(&frame.data);
+                                
+
+                                uwriteln!(uart, "Calculated udp checksum: {:?}", udp_checksum_calc);
+                                uwriteln!(uart, "Calculated ip checksum: {:?}", ip_checksum_calc);
+                            },
                             _ => {}
                         }
                     }
@@ -170,6 +206,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
         src_ipaddr: IpV4Addr::new([169, 254, 1, 229]),
         src_port: 8052,
+        dst_macaddr: MacAddr::new([44, 240, 93, 166, 32, 172]),
         dst_ipaddr: IpV4Addr::new([10, 0, 0, 127]),
         // dst_ipaddr: IpV4Addr::BROADCAST,
         dst_port: 8053,
@@ -177,7 +214,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     };
 
     // Send an ARP announcement that we are taking our assigned IP address
-    let arp_announcement: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+    let arp_announcement = EthernetFrame::<ArpPayload> {
         header: EthernetHeader {
             dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
             src_macaddr: udp.src_macaddr,
@@ -242,9 +279,9 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         // Test UDP transmit once per second
         if loops % (1000 / dt as u64) == 0 {
             match udp.transmit(&mut board.enet, *b"hello world! ... ... ...") {
-                Ok(_) => {
+                Ok(frame) => {
                     let _ =
-                        uwriteln!(uart, "\nSent UDP frame ID {:?}", &udp.id).unwrap_or_default();
+                        uwriteln!(uart, "\nSent UDP frame ID {:?}\n{:?}\n{:?}\n{:?}", udp.id, frame.header, frame.data.header, frame.data.data.header).unwrap_or_default();
                 }
                 Err(x) => {
                     let _ = uwriteln!(uart, "UDP TX error: {:?}", x).unwrap_or_default();

@@ -113,8 +113,8 @@ where
     // the checksum engine neither runs nor gives any specific error, so we're
     // doing it in software for now. The UDP checksum is optional and involves
     // a pseudoheader structure, so we skip it for now.
-    frame.data.data.header.checksum = !calc_udp_checksum(&frame.data);
-    frame.data.header.checksum = !calc_ip_checksum(&frame.data.header.to_be_bytes());
+    frame.data.data.header.checksum = calc_udp_checksum(&frame.data);
+    frame.data.header.checksum = calc_ip_checksum(&frame.data.header.to_be_bytes());
 
     frame
 }

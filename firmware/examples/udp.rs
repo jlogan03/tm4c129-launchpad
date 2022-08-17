@@ -110,13 +110,10 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                     Err(x) => {let _ = uwriteln!(uart, "Error returning UDP packet: {:?}", x);}
                                 };
 
-                                // let ip_checksum_recvd = frame.data.header.checksum;
-                                // let udp_checksum_recvd = frame.data.data.header.checksum;
-
                                 frame.data.header.checksum = 0;
-                                let ip_checksum_calc = !calc_ip_checksum(&frame.data.header.to_be_bytes());
+                                let ip_checksum_calc = calc_ip_checksum(&frame.data.header.to_be_bytes());
                                 frame.data.data.header.checksum = 0;
-                                let udp_checksum_calc = !calc_udp_checksum(&frame.data);
+                                let udp_checksum_calc = calc_udp_checksum(&frame.data);
                                 
 
                                 uwriteln!(uart, "Calculated udp checksum: {:?}", udp_checksum_calc);

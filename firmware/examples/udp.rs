@@ -262,8 +262,8 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     );
 
     loop {
-        let dt = 1_u32;
-        delay.delay_us(dt);
+        // let dt = 1_u32;
+        // delay.delay_us(dt);
         poll_ethernet(&mut board.enet, &mut uart, &mut udp, &mut buffer);
 
         // Check UART
@@ -272,48 +272,48 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         }
 
         // Test UDP transmit roughly once per second
-        if loops % (1_000_000 / dt as u64) == 0 {
-            let _ = writeln!(uart.0, "\n\nLoops = {}\n", loops);
+        // if loops % (1_000_000 as u64) == 0 {
+        //     let _ = writeln!(uart.0, "\n\nLoops = {}\n", loops);
 
-            let msg = b"hello world!";
-            match udp.transmit(&mut board.enet, *msg, Some(msg.len() as u16)) {
-                Ok(frame) => {
-                    let _ = uwriteln!(
-                        uart,
-                        "\nSent UDP frame ID {:?}\n{:?}\n{:?}\n{:?}",
-                        udp.id,
-                        frame.header,
-                        frame.data.header,
-                        frame.data.data.header
-                    );
-                }
-                Err(x) => {
-                    let _ = uwriteln!(uart, "UDP TX error: {:?}", x);
-                }
-            };
-        }
+        //     let msg = b"hello world!";
+        //     match udp.transmit(&mut board.enet, *msg, Some(msg.len() as u16)) {
+        //         Ok(frame) => {
+        //             let _ = uwriteln!(
+        //                 uart,
+        //                 "\nSent UDP frame ID {:?}\n{:?}\n{:?}\n{:?}",
+        //                 udp.id,
+        //                 frame.header,
+        //                 frame.data.header,
+        //                 frame.data.data.header
+        //             );
+        //         }
+        //         Err(x) => {
+        //             let _ = uwriteln!(uart, "UDP TX error: {:?}", x);
+        //         }
+        //     };
+        // }
 
-        if loops % (5_000_000 / dt as u64) == 0 {
-            match dhcp_socket.transmit(&mut board.enet, dhcp_discover.to_be_bytes(), None) {
-                Ok(_) => {
-                    let _ = uwriteln!(uart, "\nSent DHCP DISCOVER {:?}", &dhcp_discover);
-                }
-                Err(x) => {
-                    let _ = uwriteln!(uart, "DHCP TX error: {:?}", x);
-                }
-            };
-            writeln!(uart.0, "{:?}", &board.enet.txdl);
+        // if loops % (5_000_000 / dt as u64) == 0 {
+        //     match dhcp_socket.transmit(&mut board.enet, dhcp_discover.to_be_bytes(), None) {
+        //         Ok(_) => {
+        //             let _ = uwriteln!(uart, "\nSent DHCP DISCOVER {:?}", &dhcp_discover);
+        //         }
+        //         Err(x) => {
+        //             let _ = uwriteln!(uart, "DHCP TX error: {:?}", x);
+        //         }
+        //     };
+        //     writeln!(uart.0, "{:?}", &board.enet.txdl);
 
-            // Debugging
-            // let rxdl = &mut (board.enet.rxdl);
-            // writeln!(uart.0, "{:?}", rxdl);
+        //     // Debugging
+        //     let rxdl = &mut (board.enet.rxdl);
+        //     writeln!(uart.0, "{:?}", rxdl);
 
-            // let txdl = &mut (board.enet.txdl);
-            // writeln!(uart.0, "{:?}", txdl);
+        //     let txdl = &mut (board.enet.txdl);
+        //     writeln!(uart.0, "{:?}", txdl);
 
-            let _ = uwriteln!(uart, "{:?}", board.enet.emac_status());
-            let _ = uwriteln!(uart, "{:?}", board.enet.dma_status());
-        }
+        //     let _ = uwriteln!(uart, "{:?}", board.enet.emac_status());
+        //     let _ = uwriteln!(uart, "{:?}", board.enet.dma_status());
+        // }
 
         // board.enet.emacclear(); // Clear clearable interrupts
         loops = loops.wrapping_add(1);

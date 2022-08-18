@@ -37,7 +37,7 @@ fn main() {
         };
 
         // Send specifically to device
-        if i % 10 == 0 {
+        if i % 1 == 0 {
             let msg = format!("{} {i}", "greetings");
             match socket.send_to(msg.as_bytes(), dst_addr) {
                 Ok(_) => println!("{i} Sent packet with message \"{msg}\""), //println!("{i} Data send success"),

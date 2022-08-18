@@ -278,7 +278,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
         loops = loops.wrapping_add(1);
 
-        if loops % 1 == 0 {
+        if loops % 10000 == 0 {
             led_state = (led_state + 1) % 4;
         }
 

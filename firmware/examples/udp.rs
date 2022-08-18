@@ -55,29 +55,29 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {
         // We received ethernet data
-        let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes);
+        // let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes);
 
         // Ethernet header
         let ethernet_header = EthernetHeader::read_bytes(buffer);
-        uwriteln!(uart, "{:?}", ethernet_header);
+        // uwriteln!(uart, "{:?}", ethernet_header);
 
         match ethernet_header.ethertype {
             EtherType::IpV4 => {
                 // IPV4 packet
                 let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
-                uwriteln!(uart, "{:?}", ipheader);
+                // uwriteln!(uart, "{:?}", ipheader);
 
                 match ipheader.protocol {
                     // UDP packet
                     Protocol::Udp => {
                         let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
-                        uwriteln!(uart, "{:?}", udpheader);
+                        // uwriteln!(uart, "{:?}", udpheader);
 
                         match udpheader.dst_port {
                             x if (x == DHCP_CLIENT_PORT) || (x == DHCP_SERVER_PORT) => {
-                                let dhcp_bytes = &buffer[UDPSTART + UdpHeader::BYTE_LEN..];
-                                let dhcp_fixed_payload = DhcpFixedPayload::read_bytes(&dhcp_bytes);
-                                uwriteln!(uart, "{:?}", dhcp_fixed_payload);
+                                // let dhcp_bytes = &buffer[UDPSTART + UdpHeader::BYTE_LEN..];
+                                // let dhcp_fixed_payload = DhcpFixedPayload::read_bytes(&dhcp_bytes);
+                                // uwriteln!(uart, "{:?}", dhcp_fixed_payload);
                             }
                             x if (x == udp.src_port) && (ipheader.dst_ipaddr == udp.src_ipaddr) => {
                                 // If this is a UDP frame for us on our port for testing, echo it back
@@ -85,7 +85,8 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                     IpV4Frame<UdpFrame<ByteArray<{ MAX_ECHO }>>>,
                                 >::read_bytes(buffer);
                                 let udp_data = &frame.data.data.data;
-                                let udp_len = frame.data.data.header.length as usize - UdpHeader::BYTE_LEN;
+                                let udp_len =
+                                    frame.data.data.header.length as usize - UdpHeader::BYTE_LEN;
 
                                 let mut data = [0_u8; MAX_ECHO];
                                 for (i, x) in udp_data.0.iter().enumerate() {
@@ -104,17 +105,17 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                     Some(udp_len as u16),
                                 ) {
                                     Ok(frame) => {
-                                        let _ = uwriteln!(
-                                            uart,
-                                            "    Echoed UDP packet:\n{:?}\n{:?}\n{:?}",
-                                            frame.header,
-                                            frame.data.header,
-                                            frame.data.data.header
-                                        );
+                                        // let _ = uwriteln!(
+                                        //     uart,
+                                        //     "    Echoed UDP packet:\n{:?}\n{:?}\n{:?}",
+                                        //     frame.header,
+                                        //     frame.data.header,
+                                        //     frame.data.data.header
+                                        // );
                                     }
                                     Err(x) => {
                                         let _ =
-                                            uwriteln!(uart, "\nError echoing UDP packet:\n{:?}", x);
+                                            uwriteln!(uart, "\nError echoing UDP packet: {:?}", x);
                                     }
                                 };
                             }
@@ -127,7 +128,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
             EtherType::Arp => {
                 // ARP packet
                 let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
-                uwriteln!(uart, "{:?}", &arp_incoming);
+                // uwriteln!(uart, "{:?}", &arp_incoming);
 
                 // Send an ARP response
                 if arp_incoming.dst_ipaddr == udp.src_ipaddr {
@@ -150,8 +151,8 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
 
                     match enet.transmit(arp_response.to_be_bytes()) {
                         Ok(_) => {
-                            let _ =
-                                uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data);
+                            // let _ =
+                            //     uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data);
                         }
                         Err(x) => {
                             let _ = uwriteln!(uart, "Ethernet TX error: {:?}", x);
@@ -162,9 +163,8 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                     if arp_incoming.src_ipaddr == udp.dst_ipaddr {
                         udp.dst_macaddr = arp_incoming.src_mac;
                     };
-
                 } else {
-                    let _ = uwriteln!(uart, "Skipping response to ARP message that is not for us");
+                    // let _ = uwriteln!(uart, "Skipping response to ARP message that is not for us");
                 }
             }
             _ => {}

@@ -19,7 +19,6 @@ fn main() {
             false
         }
     };
-    // socket.set_broadcast(true).unwrap(); // Enable sending to broadcast address
 
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
@@ -37,14 +36,8 @@ fn main() {
             Err(x) => {} //{println!("{i} recv error {x}");}
         };
 
-        // Broadcast
-        // match socket.send_to(b"greetings", "255.255.255.255:8052") {
-        //     Ok(_) => (),//println!("{i} Broadcast send success"),
-        //     Err(x) => println!("{i} Data send failure: {x:?}"),
-        // }
-
         // Send specifically to device
-        if i % 100 == 0 {
+        if i % 10 == 0 {
             let msg = format!("{} {i}", "greetings");
             match socket.send_to(msg.as_bytes(), dst_addr) {
                 Ok(_) => println!("{i} Sent packet with message \"{msg}\""), //println!("{i} Data send success"),

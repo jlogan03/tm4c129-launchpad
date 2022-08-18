@@ -30,6 +30,7 @@ impl UDPSocket {
         &mut self,
         enet: &mut EthernetDriver,
         data: [u8; N],
+        data_len: Option<u16>,
     ) -> Result<EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>, EthernetError>
     where
         [(); EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
@@ -39,6 +40,7 @@ impl UDPSocket {
         self.id = self.id.wrapping_add(1);
         let frame = build_frame(
             data,
+            data_len,
             self.src_macaddr,
             self.src_ipaddr,
             self.src_port,
@@ -53,12 +55,46 @@ impl UDPSocket {
             Err(x) => Err(x)
         }
     }
+
+    /// Transmit a UDP packet to a different address than the one configured for this socket
+    pub fn transmit_to<const N: usize>(
+        &mut self,
+        dst_ipaddr: IpV4Addr,
+        dst_macaddr: MacAddr,
+        enet: &mut EthernetDriver,
+        data: [u8; N],
+        data_len: Option<u16>,
+    ) -> Result<EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>, EthernetError>
+    where
+        [(); EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
+        [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
+        [(); UdpFrame::<ByteArray<N>>::BYTE_LEN]:,
+    {
+        self.id = self.id.wrapping_add(1);
+        let frame = build_frame(
+            data,
+            data_len,
+            self.src_macaddr,
+            self.src_ipaddr,
+            self.src_port,
+            dst_ipaddr,
+            dst_macaddr,
+            self.dst_port,
+            self.id.clone(),
+        );
+
+        match unsafe { read_volatile(&enet.transmit(frame.to_be_bytes())) } {
+            Ok(()) => Ok(frame),
+            Err(x) => Err(x)
+        }
+    }
 }
 
 /// Build a standard UDP frame.
 /// Checksums are present but zeroed-out and will be replaced by the hardware.
 pub fn build_frame<const N: usize>(
     data: [u8; N],
+    data_len: Option<u16>,
     src_macaddr: MacAddr,
     src_ipaddr: IpV4Addr,
     src_port: u16,
@@ -72,6 +108,11 @@ where
     [(); UdpFrame::<ByteArray<N>>::BYTE_LEN]:,
 {
     // Standard method for calculating UDP checksum using pseudoheader
+    let udp_len: u16 = match data_len {
+        Some(x) => x + UdpHeader::BYTE_LEN as u16,
+        None => UdpFrame::<ByteArray<N>>::BYTE_LEN as u16,
+    };
+
     let mut frame = EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>> {
         header: EthernetHeader {
             dst_macaddr: dst_macaddr, // Always broadcast for IP frames
@@ -82,7 +123,7 @@ where
             header: IpV4Header {
                 version_and_header_length: VersionAndHeaderLength::new()
                     .with_version(4)
-                    .with_header_length((IpV4Header::BYTE_LEN / 4) as u8),
+                    .with_header_length(5),
                 dscp: DSCP::Standard,
                 total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
                 identification: id,
@@ -97,7 +138,7 @@ where
                 header: UdpHeader {
                     src_port: src_port,
                     dst_port: dst_port,
-                    length: UdpFrame::<ByteArray<N>>::BYTE_LEN as u16,
+                    length: udp_len,
                     checksum: 0,
                 },
                 data: ByteArray::<N>(data),
@@ -107,8 +148,6 @@ where
     };
 
     // Write IP and UDP checksums
-
-    // Standard method for calculating IP checksum
     // Ideally, this would be done by the checksum offload engine, but so far
     // the checksum engine neither runs nor gives any specific error, so we're
     // doing it in software for now. The UDP checksum is optional and involves

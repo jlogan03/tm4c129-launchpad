@@ -18,7 +18,7 @@ pub use self::rdes::{RXBUFSIZE, RXDESCRS};
 use self::tdes::*;
 pub use self::tdes::{TDES0, TXBUFSIZE, TXDESCRS};
 
-use self::status::{EmacStatus, DmaStatus};
+use self::status::{DmaStatus, EmacStatus};
 
 /// Empty type to guarantee that the emac_reset closure passed to EMACDriver::init has the correct effects
 pub(crate) struct EmacR;
@@ -136,10 +136,7 @@ impl EthernetDriver {
     }
 
     /// Attempt to send an ethernet frame that has been reduced to bytes
-    pub fn transmit<const N: usize>(
-        &mut self,
-        data: [u8; N]
-    ) -> Result<(), EthernetError> {
+    pub fn transmit<const N: usize>(&mut self, data: [u8; N]) -> Result<(), EthernetError> {
         // Check if data fits in buffer
         if N > TXBUFSIZE {
             return Err(EthernetError::BufferOverflow);
@@ -196,17 +193,15 @@ impl EthernetDriver {
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
             // and is owned by software, or we have checked all the descriptors
-            let mut num_owned: usize = 0;
             for _ in 0..RXDESCRS {
                 let owned = self.rxdl.is_owned();
-                num_owned += owned as usize;
 
                 // Poll the DMA again in case it was stalled due to lack of free descriptors
                 self.emac.rxpolld.write(|w| w.rpd().bits(0));
                 // Make sure the receive engine is enabled
                 self.rxstart();
 
-                if owned && (self.rxdl.get_rdes0(RDES0::FS) != 0) {
+                if owned {
                     break;
                 } else {
                     self.rxdl.next();
@@ -214,13 +209,8 @@ impl EthernetDriver {
             }
 
             // Did we actually find a frame to receive, or did we run out of descriptors?
-            if !(self.rxdl.is_owned() && (self.rxdl.get_rdes0(RDES0::FS) != 0)) {
-                // If all the descriptors are owned by software and yet there is no frame to receive, something
-                // has gone wrong. Flush the buffer by returning all descriptors to the DMA.
-                if num_owned == RXDESCRS {
-                    self.rxflush();
-                }
-                // Either way, there is no valid data to receive from the buffer
+            if !self.rxdl.is_owned() {
+                // There is no valid data to receive from the buffer
                 return Err(EthernetError::NothingToReceive);
             } else {
                 // There is a frame to receive

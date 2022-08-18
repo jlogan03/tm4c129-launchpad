@@ -9,10 +9,10 @@ fn main() {
     // Bind a port
     let socket = UdpSocket::bind("0.0.0.0:8053").unwrap();
     socket
-        .set_read_timeout(Some(Duration::from_millis(10)))
+        .set_read_timeout(Some(Duration::from_millis(1)))
         .unwrap();
     // Tell the socket to listen for 
-    let connected = match socket.connect(dst_addr) {
+    let _ = match socket.connect(dst_addr) {
         Ok(_) => {
             println!("Socket connection success");
             true
@@ -22,32 +22,22 @@ fn main() {
             false
         }
     };
-    let connected = true;
     // socket.set_broadcast(true).unwrap(); // Enable sending to broadcast address
 
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
     let mut i = 0;
     loop {
-        // println!("{i} Loop Start");
+        let dt = 1;
+        thread::sleep(Duration::from_micros(10 * dt));
 
         // Receive all buffered frames
-        if connected {
-            match socket.recv_from(&mut buf) {
-                Ok((amt, src)) => {println!("{i} Received {amt} bytes from {src} : {:?}", unsafe {
-                    String::from_utf8_unchecked(buf[0..amt].to_vec())
-                });},
-                Err(x) => {println!("{i} recv error {x}");}
-            };
-        } else {
-            println!("{i} Skipping recv due to connection failure")
-        }
-
-        // Send specifically to device
-        match socket.send_to(b"greetings", dst_addr) {
-            Ok(_) => (),//println!("{i} Data send success"),
-            Err(x) => println!("{i} Data send failure: {x:?}"),
-        }
+        match socket.recv_from(&mut buf) {
+            Ok((amt, src)) => {println!("{i} Received {amt} bytes from {src} : {:?}", unsafe {
+                String::from_utf8_unchecked(buf[..amt].to_vec())
+            });},
+            Err(x) => {}//{println!("{i} recv error {x}");}
+        };
 
         // Broadcast
         // match socket.send_to(b"greetings", "255.255.255.255:8052") {
@@ -55,8 +45,15 @@ fn main() {
         //     Err(x) => println!("{i} Data send failure: {x:?}"),
         // }
 
-        i += 1;
+        // Send specifically to device
+        if i % 100 == 0 {
+            let msg = format!("{} {i}", "greetings");
+            match socket.send_to(msg.as_bytes(), dst_addr) {
+                Ok(_) => println!("{i} Sent packet with message \"{msg}\""),//println!("{i} Data send success"),
+                Err(x) => println!("{i} Data send failure: {x:?}"),
+            }
+        }
 
-        thread::sleep(Duration::from_millis(5000));
+        i += 1;
     }
 }

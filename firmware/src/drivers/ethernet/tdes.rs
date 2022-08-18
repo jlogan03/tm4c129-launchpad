@@ -5,7 +5,7 @@ use core::fmt;
 use ufmt::derive::uDebug;
 
 /// Number of descriptors/buffer segments
-pub const TXDESCRS: usize = 8;
+pub const TXDESCRS: usize = 16;
 
 /// Number of bytes per buffer segment
 /// This could be tuned down if we know an upper limit on transmitted frame size

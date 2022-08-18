@@ -148,6 +148,9 @@ impl EthernetDriver {
 
         // Attempt send
         unsafe {
+            // Start from wherever the hardware is now
+            self.txdl.tdesref = self.emac.hostxdesc.read().bits() as *mut TDES;
+
             for _ in 0..TXDESCRS {
                 if self.txdl.is_owned() {
                     // We own the current descriptor; load our data into the buffer and tell the DMA to send it
@@ -189,6 +192,9 @@ impl EthernetDriver {
         self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
         // Make sure the receive engine is enabled
         self.rxstart();
+
+        // Start from wherever the hardware is now
+        // self.rxdl.rdesref = self.emac.hosrxdesc.read().bits() as *mut RDES;
 
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame

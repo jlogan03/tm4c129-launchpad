@@ -157,6 +157,12 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                             let _ = uwriteln!(uart, "Ethernet TX error: {:?}", x);
                         }
                     };
+
+                    // If this is the control server, register the mac address so that we no longer broadcast
+                    if arp_incoming.src_ipaddr == udp.dst_ipaddr {
+                        udp.dst_macaddr = arp_incoming.src_mac;
+                    };
+
                 } else {
                     let _ = uwriteln!(uart, "Skipping response to ARP message that is not for us");
                 }
@@ -185,7 +191,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     ));
 
     // Delay timer
-    let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
+    // let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
     // LEDs
     let mut loops: u64 = 0;
@@ -199,7 +205,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
         src_ipaddr: IpV4Addr::new([169, 254, 1, 229]),
         src_port: 8052,
-        dst_macaddr: MacAddr::new([44, 240, 93, 166, 32, 172]),
+        dst_macaddr: MacAddr::BROADCAST,
         dst_ipaddr: IpV4Addr::new([10, 0, 0, 127]),
         // dst_ipaddr: IpV4Addr::BROADCAST,
         dst_port: 8053,
@@ -237,33 +243,32 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     };
 
     // // UDP socket for DHCP
-    let mut dhcp_socket = UDPSocket {
-        src_macaddr: udp.src_macaddr,
-        src_ipaddr: IpV4Addr::ANY,
-        src_port: DHCP_CLIENT_PORT,
-        dst_macaddr: MacAddr::BROADCAST,
-        dst_ipaddr: IpV4Addr::BROADCAST,
-        dst_port: DHCP_SERVER_PORT,
-        id: 5147,
-    };
+    // let mut dhcp_socket = UDPSocket {
+    //     src_macaddr: udp.src_macaddr,
+    //     src_ipaddr: IpV4Addr::ANY,
+    //     src_port: DHCP_CLIENT_PORT,
+    //     dst_macaddr: MacAddr::BROADCAST,
+    //     dst_ipaddr: IpV4Addr::BROADCAST,
+    //     dst_port: DHCP_SERVER_PORT,
+    //     id: 5147,
+    // };
 
     // let dhcp_inform = DhcpFixedPayload::new_inform(udp.src_ipaddr, udp.src_macaddr, 13517);
 
-    let dhcp_discover = DhcpFixedPayload::new(
-        true,
-        DhcpOperation::Request,
-        DhcpMessageKind::Discover,
-        13519,
-        true,
-        IpV4Addr::ANY,
-        IpV4Addr::ANY,
-        IpV4Addr::ANY,
-        udp.src_macaddr,
-    );
+    // let dhcp_discover = DhcpFixedPayload::new(
+    //     true,
+    //     DhcpOperation::Request,
+    //     DhcpMessageKind::Discover,
+    //     13519,
+    //     true,
+    //     IpV4Addr::ANY,
+    //     IpV4Addr::ANY,
+    //     IpV4Addr::ANY,
+    //     udp.src_macaddr,
+    // );
 
     loop {
-        // let dt = 1_u32;
-        // delay.delay_us(dt);
+        // Check ethernet
         poll_ethernet(&mut board.enet, &mut uart, &mut udp, &mut buffer);
 
         // Check UART
@@ -271,51 +276,6 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             uwriteln!(uart, "byte read {:?}", ch);
         }
 
-        // Test UDP transmit roughly once per second
-        // if loops % (1_000_000 as u64) == 0 {
-        //     let _ = writeln!(uart.0, "\n\nLoops = {}\n", loops);
-
-        //     let msg = b"hello world!";
-        //     match udp.transmit(&mut board.enet, *msg, Some(msg.len() as u16)) {
-        //         Ok(frame) => {
-        //             let _ = uwriteln!(
-        //                 uart,
-        //                 "\nSent UDP frame ID {:?}\n{:?}\n{:?}\n{:?}",
-        //                 udp.id,
-        //                 frame.header,
-        //                 frame.data.header,
-        //                 frame.data.data.header
-        //             );
-        //         }
-        //         Err(x) => {
-        //             let _ = uwriteln!(uart, "UDP TX error: {:?}", x);
-        //         }
-        //     };
-        // }
-
-        // if loops % (5_000_000 / dt as u64) == 0 {
-        //     match dhcp_socket.transmit(&mut board.enet, dhcp_discover.to_be_bytes(), None) {
-        //         Ok(_) => {
-        //             let _ = uwriteln!(uart, "\nSent DHCP DISCOVER {:?}", &dhcp_discover);
-        //         }
-        //         Err(x) => {
-        //             let _ = uwriteln!(uart, "DHCP TX error: {:?}", x);
-        //         }
-        //     };
-        //     writeln!(uart.0, "{:?}", &board.enet.txdl);
-
-        //     // Debugging
-        //     let rxdl = &mut (board.enet.rxdl);
-        //     writeln!(uart.0, "{:?}", rxdl);
-
-        //     let txdl = &mut (board.enet.txdl);
-        //     writeln!(uart.0, "{:?}", txdl);
-
-        //     let _ = uwriteln!(uart, "{:?}", board.enet.emac_status());
-        //     let _ = uwriteln!(uart, "{:?}", board.enet.dma_status());
-        // }
-
-        // board.enet.emacclear(); // Clear clearable interrupts
         loops = loops.wrapping_add(1);
 
         if loops % 1 == 0 {

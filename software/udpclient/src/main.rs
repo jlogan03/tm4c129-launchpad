@@ -27,22 +27,23 @@ fn main() {
         thread::sleep(Duration::from_micros(1000));
 
         // Receive all buffered frames
-        match socket.recv_from(&mut buf) {
-            Ok((amt, src)) => {
+        while let Ok((amt, src)) = socket.recv_from(&mut buf) {
+            if i % 1 == 0 {
                 println!("{i} Received {amt} bytes from {src} : {:?}", unsafe {
                     String::from_utf8_unchecked(buf[..amt].to_vec())
                 });
             }
-            Err(x) => {} //{println!("{i} recv error {x}");}
-        };
+        }
 
         // Send specifically to device
-        if i % 1 == 0 {
-            let msg = format!("{} {i}", "greetings");
-            match socket.send_to(msg.as_bytes(), dst_addr) {
-                Ok(_) => println!("{i} Sent packet with message \"{msg}\""), //println!("{i} Data send success"),
-                Err(x) => println!("{i} Data send failure: {x:?}"),
+        let msg = format!("{} {i}", "greetings");
+        match socket.send_to(msg.as_bytes(), dst_addr) {
+            Ok(_) => {
+                if i % 1 == 0 {
+                    println!("{i} Sent packet with message \"{msg}\"");
+                }
             }
+            Err(x) => println!("{i} Data send failure: {x:?}"),
         }
 
         i += 1;

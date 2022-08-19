@@ -44,133 +44,11 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
 const IPSTART: usize = EthernetHeader::BYTE_LEN;
 const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
 const ARPSTART: usize = IPSTART;
-const MAX_ECHO: usize = 100; // Maximum number of bytes of UDP data to echo
+const MAX_ECHO: usize = 64; // Maximum number of bytes of UDP data to echo
 
-fn poll_ethernet<TX, RX, RTS, CTS>(
-    enet: &mut EthernetDriver,
-    uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
-    udp: &mut UDPSocket,
-    buffer: &mut [u8; RXBUFSIZE],
-) {
-    // Receive all buffered frames
-    while let Ok(num_bytes) = enet.receive(buffer) {
-        // We received ethernet data
-        // let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes);
-
-        // Ethernet header
-        let ethernet_header = EthernetHeader::read_bytes(buffer);
-        // uwriteln!(uart, "{:?}", ethernet_header);
-
-        match ethernet_header.ethertype {
-            EtherType::IpV4 => {
-                // IPV4 packet
-                let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
-                // uwriteln!(uart, "{:?}", ipheader);
-
-                match ipheader.protocol {
-                    // UDP packet
-                    Protocol::Udp => {
-                        let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
-                        // uwriteln!(uart, "{:?}", udpheader);
-
-                        match udpheader.dst_port {
-                            x if (x == DHCP_CLIENT_PORT) || (x == DHCP_SERVER_PORT) => {
-                                // let dhcp_bytes = &buffer[UDPSTART + UdpHeader::BYTE_LEN..];
-                                // let dhcp_fixed_payload = DhcpFixedPayload::read_bytes(&dhcp_bytes);
-                                // uwriteln!(uart, "{:?}", dhcp_fixed_payload);
-                            }
-                            x if (x == udp.src_port) && (ipheader.dst_ipaddr == udp.src_ipaddr) => {
-                                // If this is a UDP frame for us on our port for testing, echo it back
-                                let frame = EthernetFrame::<
-                                    IpV4Frame<UdpFrame<ByteArray<{ MAX_ECHO }>>>,
-                                >::read_bytes(buffer);
-                                let udp_data = &frame.data.data.data;
-                                let udp_len =
-                                    frame.data.data.header.length as usize - UdpHeader::BYTE_LEN;
-
-                                let mut data = [0_u8; MAX_ECHO];
-                                for (i, x) in udp_data.0.iter().enumerate() {
-                                    if i == MAX_ECHO.min(udp_len) {
-                                        break;
-                                    } else {
-                                        data[i] = *x;
-                                    };
-                                }
-
-                                match udp.transmit_to(
-                                    ipheader.src_ipaddr,
-                                    ethernet_header.src_macaddr,
-                                    enet,
-                                    data,
-                                    Some(udp_len as u16),
-                                ) {
-                                    Ok(frame) => {
-                                        // let _ = uwriteln!(
-                                        //     uart,
-                                        //     "    Echoed UDP packet:\n{:?}\n{:?}\n{:?}",
-                                        //     frame.header,
-                                        //     frame.data.header,
-                                        //     frame.data.data.header
-                                        // );
-                                    }
-                                    Err(x) => {
-                                        let _ =
-                                            uwriteln!(uart, "\nError echoing UDP packet: {:?}", x);
-                                    }
-                                };
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            EtherType::Arp => {
-                // ARP packet
-                let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
-                // uwriteln!(uart, "{:?}", &arp_incoming);
-
-                // Send an ARP response
-                if arp_incoming.dst_ipaddr == udp.src_ipaddr {
-                    let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
-                        header: EthernetHeader {
-                            dst_macaddr: arp_incoming.src_mac, // Ethernet broadcast
-                            src_macaddr: udp.src_macaddr,
-                            ethertype: EtherType::Arp,
-                        },
-                        data: ArpPayload::new(
-                            udp.src_macaddr,
-                            udp.src_ipaddr,
-                            arp_incoming.src_mac,
-                            // MacAddr::ANY,
-                            arp_incoming.src_ipaddr,
-                            ArpOperation::Response,
-                        ),
-                        checksum: 0,
-                    };
-
-                    match enet.transmit(arp_response.to_be_bytes()) {
-                        Ok(_) => {
-                            // let _ =
-                            //     uwriteln!(uart, "Sent ARP response: \n{:?}", &arp_response.data);
-                        }
-                        Err(x) => {
-                            let _ = uwriteln!(uart, "Ethernet TX error: {:?}", x);
-                        }
-                    };
-
-                    // If this is the control server, register the mac address so that we no longer broadcast
-                    if arp_incoming.src_ipaddr == udp.dst_ipaddr {
-                        udp.dst_macaddr = arp_incoming.src_mac;
-                    };
-                } else {
-                    // let _ = uwriteln!(uart, "Skipping response to ARP message that is not for us");
-                }
-            }
-            _ => {}
-        };
-    }
-}
+const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
+const IPADDR_DHCP_STATIC: IpV4Addr = ByteArray([10, 0, 0, 229]); // An arbitrary IP address in a typical DHCP block
+const DST_IPADDR_STATIC: IpV4Addr = ByteArray([10, 0, 0, 127]); // The IP address of the (probably desktop) machine we are talking to
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) -> ! {
@@ -203,16 +81,15 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     // UDP socket
     let mut udp = UDPSocket {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
-        src_ipaddr: IpV4Addr::new([169, 254, 1, 229]),
+        src_ipaddr: IPADDR_LINK_LOCAL_STATIC,
         src_port: 8052,
         dst_macaddr: MacAddr::BROADCAST,
-        dst_ipaddr: IpV4Addr::new([10, 0, 0, 127]),
-        // dst_ipaddr: IpV4Addr::BROADCAST,
+        dst_ipaddr: DST_IPADDR_STATIC,
         dst_port: 8053,
         id: 0,
     };
 
-    // Send an ARP announcement that we are taking our assigned IP address
+    // Send an ARP announcement that we are taking our statically assigned IP address
     let arp_announcement = EthernetFrame::<ArpPayload> {
         header: EthernetHeader {
             dst_macaddr: MacAddr::BROADCAST, // Ethernet broadcast
@@ -233,7 +110,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         Ok(_) => {
             let _ = uwriteln!(
                 uart,
-                "\nSent ARP announcement: {:?}",
+                "\nSent ARP announcement: \n{:?}",
                 &arp_announcement.data
             );
         }
@@ -242,30 +119,27 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         }
     };
 
-    // // UDP socket for DHCP
-    // let mut dhcp_socket = UDPSocket {
-    //     src_macaddr: udp.src_macaddr,
-    //     src_ipaddr: IpV4Addr::ANY,
-    //     src_port: DHCP_CLIENT_PORT,
-    //     dst_macaddr: MacAddr::BROADCAST,
-    //     dst_ipaddr: IpV4Addr::BROADCAST,
-    //     dst_port: DHCP_SERVER_PORT,
-    //     id: 5147,
-    // };
+    // UDP socket for DHCP
+    let mut dhcp_socket = UDPSocket {
+        src_macaddr: udp.src_macaddr,
+        src_ipaddr: IpV4Addr::ANY,
+        src_port: DHCP_CLIENT_PORT,
+        dst_macaddr: MacAddr::BROADCAST,
+        dst_ipaddr: IpV4Addr::BROADCAST,
+        dst_port: DHCP_SERVER_PORT,
+        id: 5147,
+    };
 
-    // let dhcp_inform = DhcpFixedPayload::new_inform(udp.src_ipaddr, udp.src_macaddr, 13517);
-
-    // let dhcp_discover = DhcpFixedPayload::new(
-    //     true,
-    //     DhcpOperation::Request,
-    //     DhcpMessageKind::Discover,
-    //     13519,
-    //     true,
-    //     IpV4Addr::ANY,
-    //     IpV4Addr::ANY,
-    //     IpV4Addr::ANY,
-    //     udp.src_macaddr,
-    // );
+    // Send a DHCP INFORM message to tell the network we are taking our statically assigned address
+    let dhcp_inform = DhcpFixedPayload::new_inform(udp.src_ipaddr, udp.src_macaddr, 13517);
+    match dhcp_socket.transmit(&mut board.enet, dhcp_inform.to_be_bytes(), None) {
+        Ok(_) => {
+            let _ = uwriteln!(uart, "\nSent DHCP INFORM: \n{:?}", dhcp_inform);
+        }
+        Err(x) => {
+            let _ = uwriteln!(uart, "\nError sending DHCP INFORM: {:?}", x);
+        }
+    }
 
     loop {
         // Check ethernet
@@ -306,5 +180,119 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
                 continue;
             }
         }
+    }
+}
+
+fn poll_ethernet<TX, RX, RTS, CTS>(
+    enet: &mut EthernetDriver,
+    uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
+    udp: &mut UDPSocket,
+    buffer: &mut [u8; RXBUFSIZE],
+) {
+    // Receive all buffered frames
+    while let Ok(num_bytes) = enet.receive(buffer) {
+        // We received ethernet data
+        // let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes);
+
+        // Ethernet header
+        let ethernet_header = EthernetHeader::read_bytes(buffer);
+        // uwriteln!(uart, "{:?}", ethernet_header);
+
+        match ethernet_header.ethertype {
+            EtherType::IpV4 => {
+                // IPV4 packet
+                let ipheader = IpV4Header::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
+                // uwriteln!(uart, "{:?}", ipheader);
+
+                match ipheader.protocol {
+                    // UDP packet
+                    Protocol::Udp => {
+                        let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
+                        // uwriteln!(uart, "{:?}", udpheader);
+
+                        match udpheader.dst_port {
+                            x if (x == DHCP_CLIENT_PORT) || (x == DHCP_SERVER_PORT) => {
+                                // let dhcp_bytes = &buffer[UDPSTART + UdpHeader::BYTE_LEN..];
+                                // let dhcp_fixed_payload = DhcpFixedPayload::read_bytes(&dhcp_bytes);
+                                // let _ = uwriteln!(uart, "{:?}", dhcp_fixed_payload);
+                            }
+                            x if (x == udp.src_port) && (ipheader.dst_ipaddr == udp.src_ipaddr) => {
+                                // If this is a UDP frame for us on our port for testing, echo it back
+                                let frame = EthernetFrame::<
+                                    IpV4Frame<UdpFrame<ByteArray<{ MAX_ECHO }>>>,
+                                >::read_bytes(buffer);
+                                let udp_data = &frame.data.data.data;
+                                let udp_len =
+                                    frame.data.data.header.length as usize - UdpHeader::BYTE_LEN;
+
+                                let mut data = [0_u8; MAX_ECHO];
+                                for (i, x) in udp_data.0.iter().enumerate() {
+                                    if i == MAX_ECHO.min(udp_len) {
+                                        break;
+                                    } else {
+                                        data[i] = *x;
+                                    };
+                                }
+
+                                match udp.transmit_to(
+                                    ipheader.src_ipaddr,
+                                    ethernet_header.src_macaddr,
+                                    enet,
+                                    data,
+                                    Some(udp_len as u16),
+                                ) {
+                                    Ok(_) => {}
+                                    Err(x) => {
+                                        let _ =
+                                            uwriteln!(uart, "\nError echoing UDP packet: {:?}", x);
+                                    }
+                                };
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            EtherType::Arp => {
+                // ARP packet
+                let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
+                // uwriteln!(uart, "{:?}", &arp_incoming);
+
+                // Send an ARP response
+                if arp_incoming.dst_ipaddr == udp.src_ipaddr {
+                    let arp_response: EthernetFrame<ArpPayload> = EthernetFrame::<ArpPayload> {
+                        header: EthernetHeader {
+                            dst_macaddr: arp_incoming.src_mac, // Ethernet broadcast
+                            src_macaddr: udp.src_macaddr,
+                            ethertype: EtherType::Arp,
+                        },
+                        data: ArpPayload::new(
+                            udp.src_macaddr,
+                            udp.src_ipaddr,
+                            arp_incoming.src_mac,
+                            arp_incoming.src_ipaddr,
+                            ArpOperation::Response,
+                        ),
+                        checksum: 0,
+                    };
+
+                    match enet.transmit(arp_response.to_be_bytes()) {
+                        Ok(_) => {}
+                        Err(x) => {
+                            let _ = uwriteln!(uart, "Ethernet TX error: {:?}", x);
+                        }
+                    };
+
+                    // If this is the control server, register the mac address so that we no longer broadcast
+                    if arp_incoming.src_ipaddr == udp.dst_ipaddr {
+                        udp.dst_macaddr = arp_incoming.src_mac;
+                    };
+                } else {
+                    // let _ = uwriteln!(uart, "Skipping response to ARP message that is not for us");
+                }
+            }
+            _ => {}
+        };
     }
 }

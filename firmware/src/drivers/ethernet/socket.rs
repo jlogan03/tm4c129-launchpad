@@ -31,7 +31,7 @@ impl UDPSocket {
         enet: &mut EthernetDriver,
         data: [u8; N],
         data_len: Option<u16>,
-    ) -> Result<EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>, EthernetError>
+    ) -> Result<(), EthernetError>
     where
         [(); EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
         [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
@@ -50,10 +50,7 @@ impl UDPSocket {
             self.id.clone(),
         );
 
-        match unsafe { read_volatile(&enet.transmit(frame.to_be_bytes())) } {
-            Ok(_) => Ok(frame),
-            Err(x) => Err(x)
-        }
+        unsafe { read_volatile(&enet.transmit(frame.to_be_bytes())) }
     }
 
     /// Transmit a UDP packet to a different address than the one configured for this socket
@@ -64,7 +61,7 @@ impl UDPSocket {
         enet: &mut EthernetDriver,
         data: [u8; N],
         data_len: Option<u16>,
-    ) -> Result<EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>, EthernetError>
+    ) -> Result<(), EthernetError>
     where
         [(); EthernetFrame::<IpV4Frame<UdpFrame<ByteArray<N>>>>::BYTE_LEN]:,
         [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
@@ -83,10 +80,7 @@ impl UDPSocket {
             self.id.clone(),
         );
 
-        match unsafe { read_volatile(&enet.transmit(frame.to_be_bytes())) } {
-            Ok(()) => Ok(frame),
-            Err(x) => Err(x)
-        }
+        unsafe { read_volatile(&enet.transmit(frame.to_be_bytes())) }
     }
 }
 
@@ -107,7 +101,8 @@ where
     [(); IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN]:,
     [(); UdpFrame::<ByteArray<N>>::BYTE_LEN]:,
 {
-    // Standard method for calculating UDP checksum using pseudoheader
+    // If the buffer provided is longer than the actual data it contains,
+    // make sure the packet indicates that the rest is padding
     let udp_len: u16 = match data_len {
         Some(x) => x + UdpHeader::BYTE_LEN as u16,
         None => UdpFrame::<ByteArray<N>>::BYTE_LEN as u16,

@@ -25,7 +25,7 @@ use tm4c129x_hal::time::Bps;
 use catnip::{arp::*, dhcp::*, enet::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, EthernetDriver, RXBUFSIZE},
+    drivers::ethernet::{socket::UDPSocket, EthernetDriver, RXBUFSIZE, RXDESCRS, TXDESCRS},
 };
 
 /// Wrapper for UART0 to allow us to use ufmt for panic-never compatible comms
@@ -44,7 +44,7 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
 const IPSTART: usize = EthernetHeader::BYTE_LEN;
 const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
 const ARPSTART: usize = IPSTART;
-const MAX_ECHO: usize = 64; // Maximum number of bytes of UDP data to echo
+const MAX_ECHO: usize = 100; // Maximum number of bytes of UDP data to echo
 
 const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
 const IPADDR_DHCP_STATIC: IpV4Addr = ByteArray([10, 0, 0, 229]); // An arbitrary IP address in a typical DHCP block
@@ -189,6 +189,16 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     udp: &mut UDPSocket,
     buffer: &mut [u8; RXBUFSIZE],
 ) {
+    // Make sure the TX and RX engines are running
+    for _ in 0..4 * TXDESCRS {
+        enet.txstart();
+    }
+
+    for _ in 0..4 * RXDESCRS {
+        enet.rxstart();
+    }
+    
+
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {
         // We received ethernet data

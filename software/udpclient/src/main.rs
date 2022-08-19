@@ -21,12 +21,17 @@ fn main() {
         }
     };
 
+    // Send a packet ahead to get the ARP machinery moving
+    // so that we do not lose the first few packets later
+    let _ = socket.send_to(b"sup, nerd", dst_addr);
+    thread::sleep(Duration::from_millis(250));
+
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
     let mut i = 0;
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
-    let timeout = Duration::from_millis(3);
+    let timeout = Duration::from_micros(500);
     let spam_interval = Duration::from_millis(100);
     let mut last_spam = Instant::now();
     // let mut latency: Vec<Duration>;
@@ -37,7 +42,7 @@ fn main() {
     loop {
 
         // Send a unique message to the device
-        let msg = format!("greetings {i}");
+        let msg = format!("greetings greetings {i}");
         let msg_bytes = msg.as_bytes();
         match socket.send_to(&msg_bytes, dst_addr) {
             Ok(_) => {
@@ -52,9 +57,12 @@ fn main() {
             if let Ok((amt, _)) = socket.recv_from(&mut buf) {
                 // println!("{msg_bytes:?}");
                 // println!("{:?}", &buf[..amt]);
-                recvd += 1;
-                break 'outer;
-            }
+                if &buf[..amt] == msg_bytes {
+                    // println!("Successful echo");
+                    recvd += 1;
+                    break 'outer;
+                }
+            };
         }
 
         if last_spam.elapsed() > spam_interval {
@@ -62,7 +70,7 @@ fn main() {
             elapsed = start_of_loop.elapsed().as_secs();
             rate = (recvd as f64) / (elapsed as f64);
             loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
-            println!("{i} Sent: {sent}, Received: {recvd}, Elapsed: {elapsed:?}, Round-Trip Rate: {rate:.1} [packets/sec], Loss rate: {loss_rate:.4} [percent]");
+            println!("{i} Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:?} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss rate: {loss_rate:.4} [percent]");
         }
 
 

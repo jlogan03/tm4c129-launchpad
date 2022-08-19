@@ -152,9 +152,7 @@ impl EthernetDriver {
             self.txdl.tdesref = self.emac.hostxdesc.read().bits() as *mut TDES;
 
             for _ in 0..TXDESCRS {
-                // Restart transmission repeatedly in case it gets stuck
-                self.txstart();
-                
+
                 if self.txdl.is_owned() {
                     // We own the current descriptor; load our data into the buffer and tell the DMA to send it
                     //    Load data into buffer
@@ -182,6 +180,8 @@ impl EthernetDriver {
                     // We do not own the current descriptor and can't use it to send data
                     // Go to the next descriptor and try that one
                     self.txdl.next();
+                    // Restart transmission in case it gets stuck
+                    self.txstart();
                 }
             }
         }

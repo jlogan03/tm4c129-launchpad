@@ -190,11 +190,11 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     buffer: &mut [u8; RXBUFSIZE],
 ) {
     // Make sure the TX and RX engines are running
-    for _ in 0..4 * TXDESCRS {
+    for _ in 0..TXDESCRS {
         enet.txstart();
     }
 
-    for _ in 0..4 * RXDESCRS {
+    for _ in 0..RXDESCRS {
         enet.rxstart();
     }
     

@@ -1,6 +1,6 @@
 use std::net::UdpSocket;
-use std::{thread, time::Duration};
 use std::time::Instant;
+use std::{thread, time::Duration};
 
 fn main() {
     // 10.0.0.1 is the gateway and *.2 is the DHCP server
@@ -32,7 +32,7 @@ fn main() {
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
     let timeout = Duration::from_micros(500);
-    let spam_interval = Duration::from_millis(100);
+    let spam_interval = Duration::from_millis(250);
     let mut last_spam = Instant::now();
     // let mut latency: Vec<Duration>;
     let start_of_loop = Instant::now();
@@ -40,7 +40,6 @@ fn main() {
     let mut rate: f64;
     let mut loss_rate: f64;
     loop {
-
         // Send a unique message to the device
         let msg = format!("greetings greetings {i}");
         let msg_bytes = msg.as_bytes();
@@ -55,10 +54,7 @@ fn main() {
         let start_of_recv = Instant::now();
         'outer: while start_of_recv.elapsed() < timeout {
             if let Ok((amt, _)) = socket.recv_from(&mut buf) {
-                // println!("{msg_bytes:?}");
-                // println!("{:?}", &buf[..amt]);
                 if &buf[..amt] == msg_bytes {
-                    // println!("Successful echo");
                     recvd += 1;
                     break 'outer;
                 }
@@ -72,7 +68,6 @@ fn main() {
             loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
             println!("{i} Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:?} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss rate: {loss_rate:.4} [percent]");
         }
-
 
         i += 1;
     }

@@ -23,24 +23,27 @@ fn main() {
 
     // Send a packet ahead to get the ARP machinery moving
     // so that we do not lose the first few packets later
-    let _ = socket.send_to(b"sup, nerd", dst_addr);
-    thread::sleep(Duration::from_millis(250));
-    let _ = socket.send_to(b"sup, nerd", dst_addr);
-    thread::sleep(Duration::from_millis(250));
+    for _ in 0..10 {
+        let _ = socket.send_to(b"sup, nerd", dst_addr);
+        thread::sleep(Duration::from_millis(250));
+    }
+
+    thread::sleep(Duration::from_millis(1000));
 
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
     let mut i = 0;
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
-    let timeout = Duration::from_micros(500);
+    let timeout = Duration::from_micros(500).as_secs_f64();
     let spam_interval = Duration::from_millis(1000);
     let mut last_spam = Instant::now();
-    // let mut latency: Vec<Duration>;
     let start_of_loop = Instant::now();
     let mut elapsed: u64;
     let mut rate: f64;
     let mut loss_rate: f64;
+    let mut latency: f64;
+    let mut mean_latency_us: f64 = 0.0;
     loop {
         // Send a unique message to the device
         let msg = format!("greetings greetings {i}");
@@ -54,13 +57,21 @@ fn main() {
 
         // Wait until we have heard back or time out
         let start_of_recv = Instant::now();
-        'outer: while start_of_recv.elapsed() < timeout {
-            if let Ok((amt, _)) = socket.recv_from(&mut buf) {
+        'outer: loop {
+            latency = start_of_recv.elapsed().as_secs_f64();
+            if latency > timeout {
+                break 'outer;
+            } else if let Ok((amt, _)) = socket.recv_from(&mut buf) {
                 if &buf[..amt] == msg_bytes {
                     recvd += 1;
+                    // Keep running average of roundtrip latency
+                    mean_latency_us = ((recvd - 1) as f64) / (recvd as f64) * mean_latency_us
+                        + 1.0 / (recvd as f64) * latency * 1e6;
                     break 'outer;
                 }
-            };
+            } else {
+                continue;
+            }
         }
 
         if last_spam.elapsed() > spam_interval {
@@ -68,7 +79,7 @@ fn main() {
             elapsed = start_of_loop.elapsed().as_secs();
             rate = (recvd as f64) / (elapsed as f64);
             loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
-            println!("{i} Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:?} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss rate: {loss_rate:.4} [percent]");
+            println!("{i} Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:?} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
         }
 
         i += 1;

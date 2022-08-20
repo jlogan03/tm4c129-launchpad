@@ -183,6 +183,17 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     }
 }
 
+
+#[inline(never)]
+fn txflush(enet: &mut EthernetDriver) {
+    // use cortex_m::asm::nop;
+    for _ in 0..TXDESCRS {
+        enet.txstart();
+        // nop();
+    }
+}
+
+
 fn poll_ethernet<TX, RX, RTS, CTS>(
     enet: &mut EthernetDriver,
     uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
@@ -193,6 +204,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     for _ in 0..TXDESCRS {
         enet.txstart();
     }
+    // txflush(enet);
 
     // enet.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
     for _ in 0..RXDESCRS {

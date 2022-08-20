@@ -119,7 +119,7 @@ where
                 version_and_header_length: VersionAndHeaderLength::new()
                     .with_version(4)
                     .with_header_length(5),
-                dscp: DSCP::Standard,
+                dscp: DSCP::Realtime,
                 total_length: IpV4Frame::<UdpFrame<ByteArray<N>>>::BYTE_LEN as u16,
                 identification: id,
                 fragmentation: Fragmentation::default(),

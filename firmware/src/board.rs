@@ -259,11 +259,11 @@ impl Board {
             src_macaddr,
             drivers::ethernet::PreambleLength::_3,
             drivers::ethernet::InterFrameGap::_40,
-            drivers::ethernet::BackOffLimit::_1024,
+            drivers::ethernet::BackOffLimit::_2,
             drivers::ethernet::TXThresholdDMA::_64,
             drivers::ethernet::RXThresholdDMA::_64,
-            drivers::ethernet::BurstSizeDMA::_4,
-            drivers::ethernet::BurstSizeDMA::_4,
+            drivers::ethernet::BurstSizeDMA::_2,
+            drivers::ethernet::BurstSizeDMA::_2,
         );
 
         Board {

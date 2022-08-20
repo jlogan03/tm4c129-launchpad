@@ -179,9 +179,9 @@ impl EthernetDriver {
                 } else {
                     // We do not own the current descriptor and can't use it to send data
                     // Go to the next descriptor and try that one
-                    self.txdl.next();
-                    // Restart transmission in case it gets stuck
                     self.txstart();
+                    self.txdl.next();
+
                 }
             }
         }

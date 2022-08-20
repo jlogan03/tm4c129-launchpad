@@ -25,6 +25,8 @@ fn main() {
     // so that we do not lose the first few packets later
     let _ = socket.send_to(b"sup, nerd", dst_addr);
     thread::sleep(Duration::from_millis(250));
+    let _ = socket.send_to(b"sup, nerd", dst_addr);
+    thread::sleep(Duration::from_millis(250));
 
     // Try to send and receive
     let mut buf: [u8; 1522] = [0; 1522];
@@ -32,7 +34,7 @@ fn main() {
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
     let timeout = Duration::from_micros(500);
-    let spam_interval = Duration::from_millis(250);
+    let spam_interval = Duration::from_millis(1000);
     let mut last_spam = Instant::now();
     // let mut latency: Vec<Duration>;
     let start_of_loop = Instant::now();

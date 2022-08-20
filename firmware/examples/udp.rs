@@ -194,10 +194,10 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
         enet.txstart();
     }
 
+    // enet.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
     for _ in 0..RXDESCRS {
         enet.rxstart();
     }
-    
 
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {

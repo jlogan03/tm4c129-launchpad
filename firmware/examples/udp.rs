@@ -184,32 +184,14 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 }
 
 
-#[inline(never)]
-fn txflush(enet: &mut EthernetDriver) {
-    // use cortex_m::asm::nop;
-    for _ in 0..TXDESCRS {
-        enet.txstart();
-        // nop();
-    }
-}
-
-
 fn poll_ethernet<TX, RX, RTS, CTS>(
     enet: &mut EthernetDriver,
     uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
     udp: &mut UDPSocket,
     buffer: &mut [u8; RXBUFSIZE],
 ) {
-    // Make sure the TX and RX engines are running
-    for _ in 0..TXDESCRS {
-        enet.txstart();
-    }
-    // txflush(enet);
-
-    // enet.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
-    for _ in 0..RXDESCRS {
-        enet.rxstart();
-    }
+    // Flush the EMAC peripheral's RX and TX buffers
+    enet.rxflush();
 
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {
@@ -317,4 +299,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
             _ => {}
         };
     }
+
+    // Flush EMAC peripheral's TX buffers
+    enet.txflush();
 }

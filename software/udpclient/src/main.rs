@@ -35,7 +35,8 @@ fn main() {
     let mut i = 0;
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
-    let timeout = Duration::from_micros(500).as_secs_f64();
+    let min_timeout = Duration::from_micros(300).as_secs_f64();
+    let mut timeout = Duration::from_micros(500).as_secs_f64();
     let spam_interval = Duration::from_millis(1000);
     let mut last_spam = Instant::now();
     let start_of_loop = Instant::now();
@@ -48,12 +49,13 @@ fn main() {
         // Send a unique message to the device
         let msg = format!("greetings greetings {i}");
         let msg_bytes = msg.as_bytes();
-        match socket.send_to(&msg_bytes, dst_addr) {
-            Ok(_) => {
-                sent += 1;
+        for _ in 0..1 {
+            match socket.send_to(&msg_bytes, dst_addr) {
+                Ok(_) => {}
+                Err(x) => println!("{i} Data send failure: {x:?}"),
             }
-            Err(x) => println!("{i} Data send failure: {x:?}"),
         }
+        sent += 1;
 
         // Wait until we have heard back or time out
         let start_of_recv = Instant::now();
@@ -67,6 +69,7 @@ fn main() {
                     // Keep running average of roundtrip latency
                     mean_latency_us = ((recvd - 1) as f64) / (recvd as f64) * mean_latency_us
                         + 1.0 / (recvd as f64) * latency * 1e6;
+                    timeout = (4.0 * mean_latency_us / 1e6).max(min_timeout);
                     break 'outer;
                 }
             } else {

@@ -67,8 +67,6 @@ pub struct EthernetDriver {
     pub preamble_length: PreambleLength,
     /// Inter-frame silence duration in bits
     pub interframe_gap: InterFrameGap,
-    /// Exponential backoff saturation limit
-    pub backoff_limit: BackOffLimit,
 
     // Direct Memory Access controller
     /// TX DMA transfer threshold
@@ -101,7 +99,6 @@ impl EthernetDriver {
         src_macaddr: [u8; 6],
         preamble_length: PreambleLength,
         interframe_gap: InterFrameGap,
-        backoff_limit: BackOffLimit,
         tx_thresh: TXThresholdDMA,
         rx_thresh: RXThresholdDMA,
         rx_burst_size: BurstSizeDMA,
@@ -117,7 +114,6 @@ impl EthernetDriver {
             system_clk_freq: system_clk_freq,
             preamble_length: preamble_length,
             interframe_gap: interframe_gap,
-            backoff_limit: backoff_limit,
             rx_burst_size: rx_burst_size,
             tx_burst_size: tx_burst_size,
             rx_thresh: rx_thresh,
@@ -152,7 +148,6 @@ impl EthernetDriver {
             self.txdl.tdesref = self.emac.hostxdesc.read().bits() as *mut TDES;
 
             for _ in 0..TXDESCRS {
-
                 if self.txdl.is_owned() {
                     // We own the current descriptor; load our data into the buffer and tell the DMA to send it
                     //    Load data into buffer
@@ -172,7 +167,7 @@ impl EthernetDriver {
                     // Tell the DMA that there is demand for transmission by writing any value to the register
                     self.emac.txpolld.write(|w| w.tpd().bits(0));
 
-                    // Make sure the transmitter is enabled, since it may have been disabled by errors
+                    // Make sure the transmitter is enabled
                     self.txstart();
 
                     return Ok(());
@@ -181,7 +176,6 @@ impl EthernetDriver {
                     // Go to the next descriptor and try that one
                     self.txstart();
                     self.txdl.next();
-
                 }
             }
         }
@@ -274,6 +268,12 @@ impl EthernetDriver {
         // Reset MAC again to latch configuration
         self.emac_reset();
 
+        // Set config-register configuration again just to be sure
+        // Touching the PC register again at this point will semi-break
+        // the peripheral (98%+ packet loss) until next reset
+        self.emac.cfg.write(|w| w.fes().set_bit()); // Speed 100 base T
+        self.emac.cfg.write(|w| w.dupm().set_bit()); // Full duplex mode
+
         // -------------------- NON-LATCHING CONFIGURATION --------------------
         // This configuration is cleared on peripheral reset and takes effect more-or-less immediately during operation
 
@@ -299,16 +299,8 @@ impl EthernetDriver {
         self.emac.addr0l.write(|w| unsafe { w.addrlo().bits(lo) });
 
         // Burst transfer limits
-        // Not sure what the tradeoffs are
-        // Pretty sure this is only unsafe due to old-style conversion
-        // to 5-bit integer; should be able to update upstream calc to be safe
-        // Set flag for whether programmable burst limits are the same for RX and TX
         let rxburst = (&self).rx_burst_size as u8;
         let txburst = (&self).tx_burst_size as u8;
-        match rxburst == txburst {
-            true => self.emac.dmabusmod.write(|w| w.usp().clear_bit()), // RX and TX burst limits are the same
-            false => self.emac.dmabusmod.write(|w| w.usp().set_bit()), // RX and TX burst limits are different
-        }
         // Set actual programmable burst limits
         self.emac
             .dmabusmod
@@ -316,30 +308,22 @@ impl EthernetDriver {
         self.emac
             .dmabusmod
             .write(|w| unsafe { w.pbl().bits(txburst) });
+        // Set flag for whether programmable burst limits are the same for RX and TX
+        match rxburst == txburst {
+            true => self.emac.dmabusmod.write(|w| w.usp().clear_bit()), // RX and TX burst limits are the same
+            false => self.emac.dmabusmod.write(|w| w.usp().set_bit()), // RX and TX burst limits are different
+        }
 
-        // Disable interrupts (set interrupt masks)
-        // Mask all rx interrupts
-        self.emac.mmcrxim.write(|w| {
-            w.algnerr()
-                .set_bit()
-                .crcerr()
-                .set_bit()
-                .gbf()
-                .set_bit()
-                .ucgf()
-                .set_bit()
-        });
-        // Mask all tx interrupts
-        self.emac.mmctxim.write(|w| {
-            w.gbf()
-                .set_bit()
-                .mcollgf()
-                .set_bit()
-                .octcnt()
-                .set_bit()
-                .scollgf()
-                .set_bit()
-        });
+        // Disable (mask) all RX/TX interrupts (set interrupt masks)
+        // Doing this using unsafe instead of field-by-field because there's a bit in each register
+        // that needs to be cleared in the same write operation as all the others,
+        // and both registers are safe to write to every field.
+        self.emac
+            .mmcrxim
+            .write(|w| unsafe { w.bits(0xFF_FF_FF_FF) });
+        self.emac
+            .mmctxim
+            .write(|w| unsafe { w.bits(0xFF_FF_FF_FF) });
 
         // MII (communication between EMAC and EPHY)
         match self.system_clk_freq {
@@ -357,7 +341,10 @@ impl EthernetDriver {
         // Setup up EMAC transmission behavior
 
         // No reason not to offload checksums; always faster than software
-        self.emac.cfg.write(|w| w.ipc().set_bit());
+        // However, this setting does not appear to work, despite adding the corresponding
+        // settings in the descriptor and producing verifiably well-formed packets, so
+        // we have to do our checksums in software instead.
+        // self.emac.cfg.write(|w| w.ipc().set_bit());
 
         match self.preamble_length {
             PreambleLength::_3 => self.emac.cfg.write(|w| w.prelen()._3()),
@@ -376,12 +363,9 @@ impl EthernetDriver {
             InterFrameGap::_96 => self.emac.cfg.write(|w| w.ifg()._96()),
         }
 
-        match self.backoff_limit {
-            BackOffLimit::_2 => self.emac.cfg.write(|w| w.bl()._2()),
-            BackOffLimit::_8 => self.emac.cfg.write(|w| w.bl()._8()),
-            BackOffLimit::_256 => self.emac.cfg.write(|w| w.bl()._256()),
-            BackOffLimit::_1024 => self.emac.cfg.write(|w| w.bl()._1024()),
-        }
+        // The exponential backoff limit setting has no effect on full-duplex,
+        // but we bookkeep it here in case this structure is ever used for half-duplex
+        // self.emac.cfg.write(|w| w.bl()._2());
 
         match self.tx_thresh {
             TXThresholdDMA::_16 => self.emac.dmaopmode.write(|w| w.ttc()._16()),
@@ -439,30 +423,34 @@ impl EthernetDriver {
     }
 
     /// Start transmit DMA then EMAC (order is important)
+    #[inline(always)]
     pub fn txstart(&mut self) {
         self.emac.dmaopmode.write(|w| w.st().set_bit());
         self.emac.cfg.write(|w| w.te().set_bit());
     }
 
     /// Start receive DMA then EMAC (order is important)
+    #[inline(always)]
     pub fn rxstart(&mut self) {
         self.emac.dmaopmode.write(|w| w.sr().set_bit());
         self.emac.cfg.write(|w| w.re().set_bit());
     }
 
-    /// Flush receive descriptors
-    pub unsafe fn rxflush(&mut self) {
+    /// Flush receive descriptors by restarting the engine
+    /// the maximum number of times that it can get stuck given our configuration
+    #[inline(always)]
+    pub fn rxflush(&mut self) {
         for _ in 0..RXDESCRS {
-            self.rxdl.give();
-            self.rxdl.next();
+            self.rxstart();
         }
     }
 
-    /// Flush transmit descriptors
-    pub unsafe fn txflush(&mut self) {
+    /// Flush transmit descriptors by restarting the engine
+    /// the maximum number of times that it can get stuck given our configuration
+    #[inline(always)]
+    pub fn txflush(&mut self) {
         for _ in 0..TXDESCRS {
-            self.txdl.take();
-            self.txdl.next();
+            self.txstart();
         }
     }
 

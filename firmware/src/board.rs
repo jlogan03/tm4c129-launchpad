@@ -251,6 +251,7 @@ impl Board {
         //     Get MAC address from read-only memory
         let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
         //     Initialize EMAC driver
+        //     The settings chosen here are a trade-off between latency and peak throughput
         let enet: EthernetDriver = EthernetDriver::new(
             &sysctl.power_control,
             |pc| ephy_reset_power(pc),
@@ -259,11 +260,10 @@ impl Board {
             src_macaddr,
             drivers::ethernet::PreambleLength::_3,
             drivers::ethernet::InterFrameGap::_40,
-            drivers::ethernet::BackOffLimit::_2,
             drivers::ethernet::TXThresholdDMA::_64,
             drivers::ethernet::RXThresholdDMA::_64,
-            drivers::ethernet::BurstSizeDMA::_2,
-            drivers::ethernet::BurstSizeDMA::_2,
+            drivers::ethernet::BurstSizeDMA::_1,
+            drivers::ethernet::BurstSizeDMA::_1,
         );
 
         Board {

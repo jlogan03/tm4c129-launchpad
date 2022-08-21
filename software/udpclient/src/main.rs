@@ -75,11 +75,9 @@ async fn main() {
         // Send a unique message to the device
         let msg = format!("greetings greetings {i}");
         let msg_bytes = msg.as_bytes();
-        for _ in 0..1 {
-            match socket.send_to(&msg_bytes, dst_addr) {
-                Ok(_) => {}
-                Err(x) => println!("{i} Data send failure: {x:?}"),
-            }
+        match socket.send_to(&msg_bytes, dst_addr) {
+            Ok(_) => {}
+            Err(x) => println!("{i} Data send failure: {x:?}"),
         }
         sent += 1;
 

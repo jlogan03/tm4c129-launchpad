@@ -158,7 +158,7 @@ impl Ethernet {
                     // Transmit IEEE-1588 64-bit timestamp
                     // This should only be enabled for specific packets that are expecting it,
                     // so it's staying disabled for now until that functionality is added
-                    // txdl.set_tdes0(TDES0::TTSE);
+                    // self.txdl.set_tdes0(TDES0::TTSE);
 
                     // Give ownership of this descriptor & buffer back to the DMA
                     self.txdl.give();
@@ -190,7 +190,7 @@ impl Ethernet {
         self.rxstart();
 
         // Start from wherever the hardware is now
-        // self.rxdl.rdesref = self.emac.hosrxdesc.read().bits() as *mut RDES;
+        let mut bytes_received: usize = 0;
 
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
@@ -221,16 +221,23 @@ impl Ethernet {
                 // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
                 let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
 
-                // Slice to guarantee length does not exceed buffer size
-                buf.copy_from_slice(&(descr_buf.read_volatile()[..RXBUFSIZE]));
-                // Clear the descriptor buffer so that it does not accumulate stray data on the next received frame
-                descr_buf.write_volatile([0_u8; RXBUFSIZE]);
+                // Figure out how many bytes of data are valid
+                bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
+
+                // Copy valid part of buffer into target buffer, making sure we don't run off the end anywhere
+                // We have to use a for-loop here instead of copying from slice to avoid a panic branch.
+                // This costs about 10us of round-trip latency.
+                let descr_buf_vals = descr_buf.read_volatile();
+                let ix = descr_buf_vals.len().min(bytes_received).min(buf.len()).max(1);
+                for i in 0..ix {
+                    buf[i] = descr_buf_vals[i];
+                }
             }
 
             // Give this descriptor back to the DMA
             self.rxdl.give();
 
-            let bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
+            
             Ok(bytes_received)
         }
     }
@@ -439,6 +446,7 @@ impl Ethernet {
     /// the maximum number of times that it can get stuck given our configuration
     #[inline(always)]
     pub fn rxflush(&mut self) {
+        self.emacclear();
         for _ in 0..RXDESCRS {
             self.rxstart();
         }
@@ -448,6 +456,7 @@ impl Ethernet {
     /// the maximum number of times that it can get stuck given our configuration
     #[inline(always)]
     pub fn txflush(&mut self) {
+        self.emacclear();
         for _ in 0..TXDESCRS {
             self.txstart();
         }
@@ -526,34 +535,7 @@ impl Ethernet {
     pub fn emacclear(&mut self) {
         // These have to be done all-at-once, because the summary bits are sticky and will reset otherwise
         self.emac.dmaris.write(|w| {
-            w.nis()
-                .set_bit()
-                .ais()
-                .set_bit()
-                .eri()
-                .set_bit()
-                // .fbi()
-                // .set_bit()  // Must only be cleared by reset
-                .eti()
-                .set_bit()
-                .rwt()
-                .set_bit()
-                .rps()
-                .set_bit()
-                .ru()
-                .set_bit()
-                .ri()
-                .set_bit()
-                .unf()
-                .set_bit()
-                .ovf()
-                .set_bit()
-                .tjt()
-                .set_bit()
-                .tu()
-                .set_bit()
-                .ti()
-                .set_bit()
+            unsafe{w.bits(u32::MAX)}
         }); // This interrupt is cleared by setting the bit, not by clearing it
     }
 

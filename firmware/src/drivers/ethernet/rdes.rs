@@ -5,7 +5,7 @@ use core::fmt;
 use ufmt::derive::uDebug;
 
 /// Number of descriptors/buffer segments
-pub const RXDESCRS: usize = 40;
+pub const RXDESCRS: usize = 20;
 
 /// Number of bytes per buffer segment
 pub const RXBUFSIZE: usize = 1522; // Maximum size of standard frame with vlan tag and PTP timestamp

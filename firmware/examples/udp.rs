@@ -251,6 +251,8 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                             uwriteln!(uart, "\nError echoing UDP packet: {:?}", x);
                                     }
                                 };
+
+                                // enet.txflush();
                             }
                             _ => {}
                         }

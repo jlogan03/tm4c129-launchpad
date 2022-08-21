@@ -167,7 +167,7 @@ impl Ethernet {
                     self.emac.txpolld.write(|w| w.tpd().bits(0));
 
                     // Make sure the transmitter is enabled
-                    self.txstart();
+                    self.txflush();
 
                     return Ok(());
                 } else {
@@ -446,7 +446,7 @@ impl Ethernet {
     /// the maximum number of times that it can get stuck given our configuration
     #[inline(always)]
     pub fn rxflush(&mut self) {
-        self.emacclear();
+        // self.emacclear();
         for _ in 0..RXDESCRS {
             self.rxstart();
         }

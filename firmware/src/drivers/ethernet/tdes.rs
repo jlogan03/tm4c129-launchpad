@@ -8,7 +8,7 @@ use ufmt::derive::uDebug;
 pub const TXDESCRS: usize = 16;
 
 /// Number of bytes per buffer segment
-pub const TXBUFSIZE: usize = 1522;  // Maximum size of standard frame
+pub const TXBUFSIZE: usize = 500;  // 1522 is maximum size of standard frame
 
 /// TX Descriptor List ring buffer
 #[repr(C, align(4))]

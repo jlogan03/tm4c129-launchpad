@@ -14,17 +14,17 @@ struct Influxdb {
     pub token: String
 }
 
-#[tokio::main]
-async fn main() {
-    // Set up influxdb
-    let client = Client::new();
-    let idb: Influxdb = Influxdb {
-        port: INFLUXDB_PORT,
-        bucket: "test",
-        org: "isthmus",
-        token: prompt_password("InfluxDB access token: ").unwrap()
-    };
-    let idb_uri = format!("http://localhost:{}/api/v2/write?org={}&bucket={}&precision=ns", idb.port, idb.org, idb.bucket);
+// #[tokio::main]
+fn main() {
+    // // Set up influxdb
+    // let client = Client::new();
+    // let idb: Influxdb = Influxdb {
+    //     port: INFLUXDB_PORT,
+    //     bucket: "test",
+    //     org: "isthmus",
+    //     token: prompt_password("InfluxDB access token: ").unwrap()
+    // };
+    // let idb_uri = format!("http://localhost:{}/api/v2/write?org={}&bucket={}&precision=ns", idb.port, idb.org, idb.bucket);
 
     // 10.0.0.1 is the gateway and *.2 is the DHCP server
     // 0.0.0.0 -> broadcast
@@ -59,7 +59,7 @@ async fn main() {
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
     let min_timeout = Duration::from_micros(300).as_secs_f64();
-    let mut timeout = Duration::from_micros(500).as_secs_f64();
+    let mut timeout = Duration::from_micros(300).as_secs_f64();
     let spam_interval = Duration::from_millis(1000);
     let mut last_spam = Instant::now();
     let start_of_loop = Instant::now();
@@ -70,10 +70,10 @@ async fn main() {
     let mut mean_latency_us: f64 = 0.0;
     loop {
         // Do some formatting out of the loop
-        let token_str = format!("Token {}", &idb.token);
+        // let token_str = format!("Token {}", &idb.token);
 
         // Send a unique message to the device
-        let msg = format!("greetings greetings {i}");
+        let msg = format!("greetings my dude. it is wednesday {i}");
         let msg_bytes = msg.as_bytes();
         match socket.send_to(&msg_bytes, dst_addr) {
             Ok(_) => {}
@@ -96,17 +96,17 @@ async fn main() {
                     timeout = (4.0 * mean_latency_us / 1e6).max(min_timeout);
 
                     // Send to influxdb
-                    let t = Utc::now().timestamp_nanos();
+                    // let t = Utc::now().timestamp_nanos();
                     // let latency_ns = (latency * 1e9) as u32;
-                    let line = format!("board,units=s latency={latency} {t}");
-                    let req = Request::builder()
-                    .method(Method::POST)
-                    .uri(&idb_uri)
-                    .header("Authorization", &token_str)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .header("Accept", "application/json")
-                    .body(Body::from(line)).unwrap();
-                    let _ = client.request(req).await;
+                    // let line = format!("board,units=s latency={latency} {t}");
+                    // let req = Request::builder()
+                    // .method(Method::POST)
+                    // .uri(&idb_uri)
+                    // .header("Authorization", &token_str)
+                    // .header("Content-Type", "text/plain; charset=utf-8")
+                    // .header("Accept", "application/json")
+                    // .body(Body::from(line)).unwrap();
+                    // let _ = client.request(req).await;
                     // println!("{:?}", resp);
 
                     break 'outer;

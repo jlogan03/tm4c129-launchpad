@@ -25,7 +25,7 @@ use tm4c129x_hal::time::Bps;
 use catnip::{arp::*, dhcp::*, enet::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, EthernetDriver, RXBUFSIZE, RXDESCRS, TXDESCRS},
+    drivers::ethernet::{socket::UDPSocket, Ethernet, RXBUFSIZE, RXDESCRS, TXDESCRS},
 };
 
 /// Wrapper for UART0 to allow us to use ufmt for panic-never compatible comms
@@ -185,7 +185,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
 
 fn poll_ethernet<TX, RX, RTS, CTS>(
-    enet: &mut EthernetDriver,
+    enet: &mut Ethernet,
     uart: &mut SerialUWriteable<UART0, TX, RX, RTS, CTS>,
     udp: &mut UDPSocket,
     buffer: &mut [u8; RXBUFSIZE],

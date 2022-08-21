@@ -8,7 +8,7 @@ use tm4c129x_hal::sysctl::{
 use tm4c129x_hal::time::Hertz;
 
 use crate::drivers;
-use crate::drivers::ethernet::{EmacR, EphyR, EthernetDriver};
+use crate::drivers::ethernet::{EmacR, EphyR, Ethernet};
 
 #[derive(PartialEq, Clone, Copy)]
 /// The Launchpad has two buttons
@@ -49,7 +49,7 @@ pub struct Board {
     pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub enet: EthernetDriver,
+    pub enet: Ethernet,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -251,8 +251,8 @@ impl Board {
         //     Get MAC address from read-only memory
         let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
         //     Initialize EMAC driver
-        //     The settings chosen here are a trade-off between latency and peak throughput
-        let enet: EthernetDriver = EthernetDriver::new(
+        //     The settings chosen here are a trade-off between mean latency, peak latency, and mean throughput
+        let enet: Ethernet = Ethernet::new(
             &sysctl.power_control,
             |pc| ephy_reset_power(pc),
             peripherals.EMAC0,

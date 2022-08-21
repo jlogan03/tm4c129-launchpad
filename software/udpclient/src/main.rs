@@ -1,8 +1,31 @@
 use std::net::UdpSocket;
 use std::time::Instant;
 use std::{thread, time::Duration};
+use chrono::Utc;
+use hyper::{Body, Method, Request, Uri, Client};
+use rpassword::prompt_password;
 
-fn main() {
+const INFLUXDB_PORT: u16 = 8886;
+
+struct Influxdb {
+    pub port: u16,
+    pub bucket: &'static str,
+    pub org: &'static str,
+    pub token: String
+}
+
+#[tokio::main]
+async fn main() {
+    // Set up influxdb
+    let client = Client::new();
+    let idb: Influxdb = Influxdb {
+        port: INFLUXDB_PORT,
+        bucket: "test",
+        org: "isthmus",
+        token: prompt_password("InfluxDB access token: ").unwrap()
+    };
+    let idb_uri = format!("http://localhost:{}/api/v2/write?org={}&bucket={}&precision=ns", idb.port, idb.org, idb.bucket);
+
     // 10.0.0.1 is the gateway and *.2 is the DHCP server
     // 0.0.0.0 -> broadcast
     let dst_addr = "169.254.1.229:8052";
@@ -46,6 +69,9 @@ fn main() {
     let mut latency: f64;
     let mut mean_latency_us: f64 = 0.0;
     loop {
+        // Do some formatting out of the loop
+        let token_str = format!("Token {}", &idb.token);
+
         // Send a unique message to the device
         let msg = format!("greetings greetings {i}");
         let msg_bytes = msg.as_bytes();
@@ -70,6 +96,21 @@ fn main() {
                     mean_latency_us = ((recvd - 1) as f64) / (recvd as f64) * mean_latency_us
                         + 1.0 / (recvd as f64) * latency * 1e6;
                     timeout = (4.0 * mean_latency_us / 1e6).max(min_timeout);
+
+                    // Send to influxdb
+                    let t = Utc::now().timestamp_nanos();
+                    // let latency_ns = (latency * 1e9) as u32;
+                    let line = format!("board,loc=here latency_f={latency} {t}");
+                    let req = Request::builder()
+                    .method(Method::POST)
+                    .uri(&idb_uri)
+                    .header("Authorization", &token_str)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .header("Accept", "application/json")
+                    .body(Body::from(line)).unwrap();
+                    let _ = client.request(req).await;
+                    // println!("{:?}", resp);
+
                     break 'outer;
                 }
             } else {

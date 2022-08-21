@@ -4,7 +4,7 @@ use catnip::{enet::*, ip::*, udp::*, *};
 
 use core::ptr::read_volatile;
 
-use super::{EthernetDriver, EthernetError};
+use super::{Ethernet, EthernetError};
 
 /// Thin adapter layer to generate UDP packets without constantly passing the address info around
 pub struct UDPSocket {
@@ -28,7 +28,7 @@ impl UDPSocket {
     /// Build a UDP packet from data & pass it to the ethernet driver to transmit in hardware
     pub fn transmit<const N: usize>(
         &mut self,
-        enet: &mut EthernetDriver,
+        enet: &mut Ethernet,
         data: [u8; N],
         data_len: Option<u16>,
     ) -> Result<(), EthernetError>
@@ -58,7 +58,7 @@ impl UDPSocket {
         &mut self,
         dst_ipaddr: IpV4Addr,
         dst_macaddr: MacAddr,
-        enet: &mut EthernetDriver,
+        enet: &mut Ethernet,
         data: [u8; N],
         data_len: Option<u16>,
     ) -> Result<(), EthernetError>

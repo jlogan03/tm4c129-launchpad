@@ -47,7 +47,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
     addr
 }
 
-/// Configuration of EMAC0 peripheral as a UDP socket for a single connection
+/// Configuration of EMAC0 peripheral as a full-duplex 100-baseT ethernet controller.
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
@@ -56,7 +56,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 /// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
 /// values within the struct, hence the repr(C).
 #[repr(C, align(4))]
-pub struct EthernetDriver {
+pub struct Ethernet {
     // EMAC
     /// EMAC peripheral registers
     pub emac: EMAC0,
@@ -89,7 +89,7 @@ pub struct EthernetDriver {
     pub rxdl: RXDL,
 }
 
-impl EthernetDriver {
+impl Ethernet {
     /// Build and initialize
     pub(crate) fn new<F>(
         pc: &PowerControl,
@@ -103,13 +103,12 @@ impl EthernetDriver {
         rx_thresh: RXThresholdDMA,
         rx_burst_size: BurstSizeDMA,
         tx_burst_size: BurstSizeDMA,
-    ) -> EthernetDriver
+    ) -> Ethernet
     where
         F: Fn(&PowerControl) -> EphyR,
-        // G: Fn(&PowerControl) -> EmacR,
     {
         // Build driver struct & initialize descriptor lists and buffers
-        let mut enet: EthernetDriver = EthernetDriver {
+        let mut enet: Ethernet = Ethernet {
             emac: emac,
             system_clk_freq: system_clk_freq,
             preamble_length: preamble_length,
@@ -320,10 +319,10 @@ impl EthernetDriver {
         // and both registers are safe to write to every field.
         self.emac
             .mmcrxim
-            .write(|w| unsafe { w.bits(0xFF_FF_FF_FF) });
+            .write(|w| unsafe { w.bits(u32::MAX) });
         self.emac
             .mmctxim
-            .write(|w| unsafe { w.bits(0xFF_FF_FF_FF) });
+            .write(|w| unsafe { w.bits(u32::MAX) });
 
         // MII (communication between EMAC and EPHY)
         match self.system_clk_freq {

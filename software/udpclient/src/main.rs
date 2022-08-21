@@ -100,7 +100,7 @@ async fn main() {
                     // Send to influxdb
                     let t = Utc::now().timestamp_nanos();
                     // let latency_ns = (latency * 1e9) as u32;
-                    let line = format!("board,loc=here latency_f={latency} {t}");
+                    let line = format!("board,units=s latency={latency} {t}");
                     let req = Request::builder()
                     .method(Method::POST)
                     .uri(&idb_uri)

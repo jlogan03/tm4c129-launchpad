@@ -1,9 +1,9 @@
+use chrono::Utc;
+use hyper::{Body, Client, Method, Request};
+use rpassword::prompt_password;
 use std::net::UdpSocket;
 use std::time::Instant;
 use std::{thread, time::Duration};
-use chrono::Utc;
-use hyper::{Body, Method, Request, Client};
-use rpassword::prompt_password;
 
 const INFLUXDB_PORT: u16 = 8886;
 
@@ -11,7 +11,7 @@ struct Influxdb {
     pub port: u16,
     pub bucket: &'static str,
     pub org: &'static str,
-    pub token: String
+    pub token: String,
 }
 
 #[tokio::main]
@@ -22,9 +22,12 @@ async fn main() {
         port: INFLUXDB_PORT,
         bucket: "test",
         org: "isthmus",
-        token: prompt_password("InfluxDB access token: ").unwrap()
+        token: prompt_password("InfluxDB access token: ").unwrap(),
     };
-    let idb_uri = format!("http://localhost:{}/api/v2/write?org={}&bucket={}&precision=ns", idb.port, idb.org, idb.bucket);
+    let idb_uri = format!(
+        "http://localhost:{}/api/v2/write?org={}&bucket={}&precision=ns",
+        idb.port, idb.org, idb.bucket
+    );
     let token_str = format!("Token {}", &idb.token);
 
     // 10.0.0.1 is the gateway and *.2 is the DHCP server
@@ -63,16 +66,11 @@ async fn main() {
     let mut i = 0;
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
-    // let min_timeout = Duration::from_micros(300).as_secs_f64();
-    let mut timeout = Duration::from_micros(500).as_secs_f64();
-    let spam_interval = Duration::from_millis(1000);
+    let timeout = Duration::from_micros(500).as_secs_f64();
+    let spam_interval = Duration::from_millis(2000);
     let mut last_spam = Instant::now();
-    let mut rate: f64;
-    let mut loss_rate: f64;
     let mut latency: f64;
-    let mut mean_latency_us: f64 = 0.0;
     loop {
-
         // Send a unique message to the device
         let msg = format!("greetings, my dude. it is wednesday {i}");
         let msg_bytes = msg.as_bytes();
@@ -102,43 +100,50 @@ async fn main() {
             }
         }
 
+        // Once per spam interval, print outputs to terminal and send data to influxdb
         let elapsed = last_spam.elapsed();
         if elapsed > spam_interval {
             // Keep running average of roundtrip latency and drop rate
-            mean_latency_us = latencies.iter().sum::<f64>() / (latencies.len() as f64) * 1e6;
-            rate = (recvd as f64) / elapsed.as_secs_f64();
-            loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
+            let mean_latency_us = latencies.iter().sum::<f64>() / (latencies.len() as f64) * 1e6;
+            let rate = (recvd as f64) / elapsed.as_secs_f64();
+            let loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
             println!("{i} Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:?} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
             // Reset counters
             sent = 0;
             recvd = 0;
 
-
             // Send stored values to influxdb and clear buffers
             let mut lines: Vec<String> = Vec::new();
+            //    Log metrics
             while times.len() >= 1 {
                 let t = times.pop().unwrap_or_default();
                 let l = latencies.pop().unwrap_or_default();
                 lines.push(format!("board,units=s latency={l} {t}"))
             }
+            //    Log success rate and drop rate
+            let t = Utc::now().timestamp_nanos();
+            lines.push(format!("board,units=Hz roundtrip_rate={rate} {t}"));
+            lines.push(format!("board,units=percent roundtrip_loss_rate={loss_rate} {t}"));
+            //    Send data via HTTP request
             let req = Request::builder()
-            .method(Method::POST)
-            .uri(&idb_uri)
-            .header("Authorization", &token_str)
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .header("Accept", "application/json")
-            .body(Body::from(lines.join("\n"))).unwrap();
+                .method(Method::POST)
+                .uri(&idb_uri)
+                .header("Authorization", &token_str)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .header("Accept", "application/json")
+                .body(Body::from(lines.join("\n")))
+                .unwrap();
             // We need to block on this request to avoid clogging the wire while the test is in progress
             // Check the response but only print if there was an error
             let resp = client.request(req).await;
             match resp {
-                Ok(x) => {
-                    match x.status().is_success() {
-                        true => {},
-                        false => println!("{:?}", x)
-                    }
+                Ok(x) => match x.status().is_success() {
+                    true => {}
+                    false => println!("{:?}", x),
+                },
+                Err(x) => {
+                    println!("{:?}", x);
                 }
-                Err(x) => {println!("{:?}", x);}
             }
 
             // Reset timer at end so that it doesn't absorb timing from database comms

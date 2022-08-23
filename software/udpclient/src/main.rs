@@ -111,7 +111,7 @@ async fn main() {
             let rate = (recvd as f64) / elapsed;
             let loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
             let throughput = (sent as f64) * (num_to_send as f64) / elapsed;
-            println!("Data Size: {num_to_send}, Throughput: {throughput:.0} [B/s], Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:.2} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
+            println!("Data Size: {num_to_send} [B], Throughput: {throughput:.0} [B/s], Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:.2} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
             // Reset counters
             sent = 0;
             recvd = 0;

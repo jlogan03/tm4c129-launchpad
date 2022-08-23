@@ -65,7 +65,7 @@ async fn main() {
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
     let timeout = Duration::from_micros(2000).as_secs_f64();
-    let spam_interval = Duration::from_millis(1000).as_secs_f64();
+    let spam_interval = Duration::from_millis(500).as_secs_f64();
     let mut last_spam = Instant::now();
     let mut latency: f64;
     let mut msg_bytes = [0_u8; 160];

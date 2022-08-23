@@ -48,14 +48,12 @@ async fn main() {
         }
     };
 
-    // Send a packet ahead to get the ARP machinery moving
+    // Send a few packets ahead to get the ARP machinery moving
     // so that we do not lose the first few packets later
-    for _ in 0..10 {
+    for _ in 0..20 {
         let _ = socket.send_to(b"sup, nerd", dst_addr);
-        thread::sleep(Duration::from_millis(250));
+        thread::sleep(Duration::from_millis(50));
     }
-
-    thread::sleep(Duration::from_millis(1000));
 
     // Metrics
     let mut latencies: Vec<f64> = Vec::new();
@@ -67,14 +65,19 @@ async fn main() {
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
     let timeout = Duration::from_micros(500).as_secs_f64();
-    let spam_interval = Duration::from_millis(2000);
+    let spam_interval = Duration::from_millis(1000).as_secs_f64();
     let mut last_spam = Instant::now();
     let mut latency: f64;
+    let mut msg_bytes = [0_u8; 100];
+    let mut num_to_send = 1;
     loop {
-        // Send a unique message to the device
-        let msg = format!("greetings, my dude. it is wednesday {i}");
-        let msg_bytes = msg.as_bytes();
-        match socket.send_to(&msg_bytes, dst_addr) {
+        // Send a unique message to the device, varying the length on each
+        // experiment to examine the effect of packet size
+        let bytes = (i as u64).to_be_bytes();
+        for j in 0..msg_bytes.len() {
+            msg_bytes[j] = bytes[j % 8];
+        }
+        match socket.send_to(&msg_bytes[..num_to_send], dst_addr) {
             Ok(_) => {}
             Err(x) => println!("{i} Data send failure: {x:?}"),
         }
@@ -87,7 +90,7 @@ async fn main() {
             if latency > timeout {
                 break 'outer;
             } else if let Ok((amt, _)) = socket.recv_from(&mut buf) {
-                if &buf[..amt] == msg_bytes {
+                if &buf[..amt] == &msg_bytes[..num_to_send] {
                     recvd += 1;
                     // Store values to send to influxdb
                     latencies.push(latency);
@@ -101,13 +104,14 @@ async fn main() {
         }
 
         // Once per spam interval, print outputs to terminal and send data to influxdb
-        let elapsed = last_spam.elapsed();
+        let elapsed = last_spam.elapsed().as_secs_f64();
         if elapsed > spam_interval {
             // Keep running average of roundtrip latency and drop rate
             let mean_latency_us = latencies.iter().sum::<f64>() / (latencies.len() as f64) * 1e6;
-            let rate = (recvd as f64) / elapsed.as_secs_f64();
+            let rate = (recvd as f64) / elapsed;
             let loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
-            println!("{i} Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:?} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
+            let throughput = (sent as f64) * (num_to_send as f64) / elapsed;
+            println!("Data Size: {num_to_send}, Throughput: {throughput:.0} [B/s], Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:.2} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
             // Reset counters
             sent = 0;
             recvd = 0;
@@ -120,10 +124,12 @@ async fn main() {
                 let l = latencies.pop().unwrap_or_default();
                 lines.push(format!("board,units=s latency={l} {t}"))
             }
-            //    Log success rate and drop rate
+            //    Log aggregate metrics
             let t = Utc::now().timestamp_nanos();
             lines.push(format!("board,units=Hz roundtrip_rate={rate} {t}"));
             lines.push(format!("board,units=percent roundtrip_loss_rate={loss_rate} {t}"));
+            lines.push(format!("board,units=B/s roundtrip_throughput={throughput} {t}"));
+            lines.push(format!("board,units=B roundtrip_data_size={num_to_send} {t}"));
             //    Send data via HTTP request
             let req = Request::builder()
                 .method(Method::POST)
@@ -145,6 +151,8 @@ async fn main() {
                     println!("{:?}", x);
                 }
             }
+            // Increment number of bytes to send in each message
+            num_to_send = ((num_to_send + 1) % msg_bytes.len()).max(1);
 
             // Reset timer at end so that it doesn't absorb timing from database comms
             last_spam = Instant::now();

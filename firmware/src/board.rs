@@ -260,10 +260,6 @@ impl Board {
             src_macaddr,
             drivers::ethernet::PreambleLength::_3,
             drivers::ethernet::InterFrameGap::_40,
-            drivers::ethernet::TXThresholdDMA::_64,
-            drivers::ethernet::RXThresholdDMA::_64,
-            drivers::ethernet::BurstSizeDMA::_1,
-            drivers::ethernet::BurstSizeDMA::_1,
         );
 
         Board {

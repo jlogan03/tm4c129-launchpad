@@ -8,7 +8,7 @@ use ufmt::derive::uDebug;
 pub const TXDESCRS: usize = 16;
 
 /// Number of bytes per buffer segment
-pub const TXBUFSIZE: usize = 500;  // 1522 is maximum size of standard frame
+pub const TXBUFSIZE: usize = 400;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
 
 /// TX Descriptor List ring buffer
 #[repr(C, align(4))]
@@ -58,10 +58,12 @@ impl TXDL {
 
                 // Enable ethernet checksum replacement
                 txdl.set_tdes0(TDES0::CRCR);
-                txdl.set_tdes0(TDES0::DC);  // Unintuitive, but we have to set this flag high per datasheet table 20-19 to get CRC replacement
+                txdl.set_tdes0(TDES0::DC);  // Set this flag to replace existing blank CRC per datasheet table 20-19
 
                 // Enable IPV4 & UDPV4 checksum replacement
-                txdl.set_tdes0(TDES0::CicFull);
+                // This does not appear to work at all
+                // txdl.set_tdes0(TDES0::CicFull);
+                // txdl.set_tdes0(TDES0::CicIPV4);
 
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);

@@ -68,16 +68,6 @@ pub struct Ethernet {
     /// Inter-frame silence duration in bits
     pub interframe_gap: InterFrameGap,
 
-    // Direct Memory Access controller
-    /// TX DMA transfer threshold
-    pub tx_thresh: TXThresholdDMA,
-    /// RX DMA transfer threshold
-    pub rx_thresh: RXThresholdDMA,
-    /// RX DMA burst size
-    pub rx_burst_size: BurstSizeDMA,
-    /// TX DMA burst size
-    pub tx_burst_size: BurstSizeDMA,
-
     // Addressing
     /// Source mac address
     pub src_macaddr: [u8; 6],
@@ -99,10 +89,6 @@ impl Ethernet {
         src_macaddr: [u8; 6],
         preamble_length: PreambleLength,
         interframe_gap: InterFrameGap,
-        tx_thresh: TXThresholdDMA,
-        rx_thresh: RXThresholdDMA,
-        rx_burst_size: BurstSizeDMA,
-        tx_burst_size: BurstSizeDMA,
     ) -> Ethernet
     where
         F: Fn(&PowerControl) -> EphyR,
@@ -113,13 +99,7 @@ impl Ethernet {
             system_clk_freq: system_clk_freq,
             preamble_length: preamble_length,
             interframe_gap: interframe_gap,
-            rx_burst_size: rx_burst_size,
-            tx_burst_size: tx_burst_size,
-            rx_thresh: rx_thresh,
-            tx_thresh: tx_thresh,
-
             src_macaddr: src_macaddr,
-
             txdl: TXDL::new(),
             rxdl: RXDL::new(),
         };
@@ -136,10 +116,6 @@ impl Ethernet {
         if N > TXBUFSIZE {
             return Err(EthernetError::BufferOverflow);
         }
-        // Check if data meets minimum length required for ethernet frame
-        if N < 64 {
-            return Err(EthernetError::FrameTooShort);
-        }
 
         // Attempt send
         unsafe {
@@ -155,25 +131,19 @@ impl Ethernet {
                     //    Set buffer length
                     self.txdl.set_buffer_size(N as u16);
 
-                    // Transmit IEEE-1588 64-bit timestamp
-                    // This should only be enabled for specific packets that are expecting it,
-                    // so it's staying disabled for now until that functionality is added
-                    // self.txdl.set_tdes0(TDES0::TTSE);
-
                     // Give ownership of this descriptor & buffer back to the DMA
                     self.txdl.give();
 
-                    // Tell the DMA that there is demand for transmission by writing any value to the register
-                    self.emac.txpolld.write(|w| w.tpd().bits(0));
-
-                    // Make sure the transmitter is enabled
-                    self.txflush();
+                    // Push the packet through
+                    self.txpush();
 
                     return Ok(());
                 } else {
                     // We do not own the current descriptor and can't use it to send data
                     // Go to the next descriptor and try that one
+                    self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
                     self.txstart();
+
                     self.txdl.next();
                 }
             }
@@ -184,11 +154,6 @@ impl Ethernet {
 
     /// Receive a frame of unknown size that may be up to 1522 bytes
     pub fn receive(&mut self, buf: &mut [u8; RXBUFSIZE]) -> Result<usize, EthernetError> {
-        // Poll the DMA in case it has suspended
-        self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
-        // Make sure the receive engine is enabled
-        self.rxstart();
-
         // Start from wherever the hardware is now
         let mut bytes_received: usize = 0;
 
@@ -196,12 +161,12 @@ impl Ethernet {
             // Walk through descriptor list until we find one that is the start of a received frame
             // and is owned by software, or we have checked all the descriptors
             for _ in 0..RXDESCRS {
-                let owned = self.rxdl.is_owned();
 
                 // Poll the DMA again in case it was stalled due to lack of free descriptors
+                self.rxstart();  // Make sure the receive engine is enabled
                 self.emac.rxpolld.write(|w| w.rpd().bits(0));
-                // Make sure the receive engine is enabled
-                self.rxstart();
+
+                let owned = self.rxdl.is_owned();
 
                 if owned {
                     break;
@@ -212,6 +177,8 @@ impl Ethernet {
 
             // Did we actually find a frame to receive, or did we run out of descriptors?
             if !self.rxdl.is_owned() {
+                // Move to the DMA's current descriptor pointer so that we catch the read immediately later
+                self.rxdl.rdesref = self.emac.hosrxdesc.read().bits() as *mut RDES;
                 // There is no valid data to receive from the buffer
                 return Err(EthernetError::NothingToReceive);
             } else {
@@ -287,9 +254,6 @@ impl Ethernet {
         self.rxstop();
         self.txstop();
 
-        // Assumptions
-        self.emac.dmabusmod.write(|w| w.atds().set_bit()); // 8-word descriptor size
-
         // Set MAC address
         // Per mfr, addr0l must be set last because writing that register is the trigger
         // to latch the new address in hardware.
@@ -304,21 +268,9 @@ impl Ethernet {
         self.emac.addr0h.write(|w| unsafe { w.addrhi().bits(hi) });
         self.emac.addr0l.write(|w| unsafe { w.addrlo().bits(lo) });
 
-        // Burst transfer limits
-        let rxburst = (&self).rx_burst_size as u8;
-        let txburst = (&self).tx_burst_size as u8;
-        // Set actual programmable burst limits
-        self.emac
-            .dmabusmod
-            .write(|w| unsafe { w.rpbl().bits(rxburst) });
-        self.emac
-            .dmabusmod
-            .write(|w| unsafe { w.pbl().bits(txburst) });
-        // Set flag for whether programmable burst limits are the same for RX and TX
-        match rxburst == txburst {
-            true => self.emac.dmabusmod.write(|w| w.usp().clear_bit()), // RX and TX burst limits are the same
-            false => self.emac.dmabusmod.write(|w| w.usp().set_bit()), // RX and TX burst limits are different
-        }
+        // Set transmit priority to avoid getting swamped by RX
+        self.emac.dmabusmod.write(|w| w.txpr().set_bit());
+        self.emac.dmabusmod.write(|w| w.da().set_bit());
 
         // Disable (mask) all RX/TX interrupts (set interrupt masks)
         // Doing this using unsafe instead of field-by-field because there's a bit in each register
@@ -346,11 +298,12 @@ impl Ethernet {
 
         // Setup up EMAC transmission behavior
 
-        // No reason not to offload checksums; always faster than software
-        // However, this setting does not appear to work, despite adding the corresponding
-        // settings in the descriptor and producing verifiably well-formed packets, so
-        // we have to do our checksums in software instead.
-        // self.emac.cfg.write(|w| w.ipc().set_bit());
+        // Offload _validation_ of checksums to hardware (not insertion of checksums)
+        // This requires using the DMA's store-and-forward mode, which disables
+        // programmable DMA thresholds
+        self.emac.dmaopmode.write(|w| w.rsf().set_bit());
+        self.emac.dmaopmode.write(|w| w.tsf().set_bit());
+        self.emac.cfg.write(|w| w.ipc().set_bit());
 
         match self.preamble_length {
             PreambleLength::_3 => self.emac.cfg.write(|w| w.prelen()._3()),
@@ -369,26 +322,8 @@ impl Ethernet {
             InterFrameGap::_96 => self.emac.cfg.write(|w| w.ifg()._96()),
         }
 
-        // The exponential backoff limit setting has no effect on full-duplex,
-        // but we bookkeep it here in case this structure is ever used for half-duplex
-        // self.emac.cfg.write(|w| w.bl()._2());
-
-        match self.tx_thresh {
-            TXThresholdDMA::_16 => self.emac.dmaopmode.write(|w| w.ttc()._16()),
-            TXThresholdDMA::_24 => self.emac.dmaopmode.write(|w| w.ttc()._24()),
-            TXThresholdDMA::_32 => self.emac.dmaopmode.write(|w| w.ttc()._32()),
-            TXThresholdDMA::_40 => self.emac.dmaopmode.write(|w| w.ttc()._40()),
-            TXThresholdDMA::_64 => self.emac.dmaopmode.write(|w| w.ttc()._64()),
-            TXThresholdDMA::_128 => self.emac.dmaopmode.write(|w| w.ttc()._128()),
-            TXThresholdDMA::_192 => self.emac.dmaopmode.write(|w| w.ttc()._192()),
-            TXThresholdDMA::_256 => self.emac.dmaopmode.write(|w| w.ttc()._256()),
-        }
-        match self.rx_thresh {
-            RXThresholdDMA::_32 => self.emac.dmaopmode.write(|w| w.rtc()._32()),
-            RXThresholdDMA::_64 => self.emac.dmaopmode.write(|w| w.rtc()._64()),
-            RXThresholdDMA::_96 => self.emac.dmaopmode.write(|w| w.rtc()._96()),
-            RXThresholdDMA::_128 => self.emac.dmaopmode.write(|w| w.rtc()._128()),
-        }
+        // 8-word descriptor size
+        self.emac.dmabusmod.write(|w| w.atds().set_bit());
 
         // Set descriptor list pointers
         self.emac
@@ -444,20 +379,24 @@ impl Ethernet {
 
     /// Flush receive descriptors by restarting the engine
     /// the maximum number of times that it can get stuck given our configuration
+    /// RX engine runs best with poll after start.
     #[inline(always)]
-    pub fn rxflush(&mut self) {
-        // self.emacclear();
+    pub fn rxpush(&mut self) {
+        self.emacclear();
         for _ in 0..RXDESCRS {
             self.rxstart();
+            self.emac.rxpolld.write(|w| unsafe{w.rpd().bits(0)});
         }
     }
 
     /// Flush transmit descriptors by restarting the engine
-    /// the maximum number of times that it can get stuck given our configuration
+    /// the maximum number of times that it can get stuck given our configuration.
+    /// TX engine runs best with poll before start.
     #[inline(always)]
-    pub fn txflush(&mut self) {
+    pub fn txpush(&mut self) {
         self.emacclear();
         for _ in 0..TXDESCRS {
+            self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
             self.txstart();
         }
     }
@@ -562,6 +501,8 @@ impl Ethernet {
 ///
 /// This is the number of alternating 0-1 bits transmitted at the start of each frame
 /// in order to synchronize clocks between the transmitter and receiver.
+/// 
+/// Tradeoff is between speed and noise tolerance.
 #[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum PreambleLength {
@@ -573,6 +514,8 @@ pub enum PreambleLength {
 /// Choices of interframe gap length in bits.
 ///
 /// This is the duration of radio-silence used to signal the end of a transmission frame.
+/// 
+/// Tradeoff is between speed and noise tolerance.
 #[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum InterFrameGap {
@@ -586,7 +529,7 @@ pub enum InterFrameGap {
     _96,
 }
 
-/// Choices of back-off limit in bits.
+/// Choices of back-off limit in bits. This setting is only used for half-duplex operation.
 ///
 /// This is a cap on the rescheduling duration given by the exponential back-off algorithm
 /// in the event of repeated collisions during transmission.
@@ -599,9 +542,12 @@ pub enum BackOffLimit {
     _1024,
 }
 
-/// TX memory transfer threshold for memory controller
-///
+/// TX memory transfer threshold for memory controller. 
+/// 
 /// This is the number of bytes in the buffer required to trigger a transfer.
+/// 
+/// This setting is ignored when the DMA is in store-and-forward mode, which is
+/// required for checksum offload.
 #[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum TXThresholdDMA {
@@ -618,6 +564,9 @@ pub enum TXThresholdDMA {
 /// RX memory transfer threshold for memory controller
 ///
 /// This is the number of bytes in the buffer required to trigger a transfer.
+/// 
+/// This setting is ignored when the DMA is in store-and-forward mode, which is
+/// required for checksum offload.
 #[derive(uDebug, Debug)]
 #[allow(missing_docs)]
 pub enum RXThresholdDMA {
@@ -627,7 +576,9 @@ pub enum RXThresholdDMA {
     _128,
 }
 
-/// RX memory transfer burst size in 32-bit words
+/// TX/RX memory transfer burst size in 32-bit words.
+/// 
+/// From empirical testing, _1 (the default) is optimal for both latency and throughput.
 #[derive(uDebug, Debug, Eq, PartialEq)]
 #[allow(missing_docs)]
 #[repr(u8)]
@@ -656,8 +607,6 @@ pub enum EthernetError {
     BufferOverflow,
     /// No descriptor available for transmission
     DescriptorUnavailable,
-    /// Frame is less than 64 bytes and needs padding
-    FrameTooShort,
     /// Nothing to receive from RX descriptor buffers
     NothingToReceive,
 }

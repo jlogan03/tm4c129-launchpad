@@ -8,7 +8,7 @@ use ufmt::derive::uDebug;
 pub const RXDESCRS: usize = 40;
 
 /// Number of bytes per buffer segment
-pub const RXBUFSIZE: usize = 600; // 1522 is maximum size of standard frame with vlan tag and PTP timestamp
+pub const RXBUFSIZE: usize = 1522; // 1522 is maximum size of standard frame with vlan tag
 
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///

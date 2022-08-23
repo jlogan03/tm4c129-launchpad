@@ -44,7 +44,7 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
 const IPSTART: usize = EthernetHeader::BYTE_LEN;
 const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
 const ARPSTART: usize = IPSTART;
-const MAX_ECHO: usize = 100; // Maximum number of bytes of UDP data to echo
+const MAX_ECHO: usize = 160; // Maximum number of bytes of UDP data to echo
 
 const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
 const IPADDR_DHCP_STATIC: IpV4Addr = ByteArray([10, 0, 0, 229]); // An arbitrary IP address in a typical DHCP block
@@ -191,7 +191,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     buffer: &mut [u8; RXBUFSIZE],
 ) {
     // Flush the EMAC peripheral's RX and TX buffers
-    enet.rxflush();
+    enet.rxpush();
 
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {
@@ -252,7 +252,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                     }
                                 };
 
-                                // enet.txflush();
+                                // enet.txpush();
                             }
                             _ => {}
                         }
@@ -303,5 +303,5 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     }
 
     // Flush EMAC peripheral's TX buffers
-    enet.txflush();
+    enet.txpush();
 }

@@ -64,11 +64,11 @@ async fn main() {
     let mut i = 0;
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
-    let timeout = Duration::from_micros(500).as_secs_f64();
+    let timeout = Duration::from_micros(2000).as_secs_f64();
     let spam_interval = Duration::from_millis(1000).as_secs_f64();
     let mut last_spam = Instant::now();
     let mut latency: f64;
-    let mut msg_bytes = [0_u8; 100];
+    let mut msg_bytes = [0_u8; 160];
     let mut num_to_send = 1;
     loop {
         // Send a unique message to the device, varying the length on each
@@ -110,7 +110,7 @@ async fn main() {
             let mean_latency_us = latencies.iter().sum::<f64>() / (latencies.len() as f64) * 1e6;
             let rate = (recvd as f64) / elapsed;
             let loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
-            let throughput = (sent as f64) * (num_to_send as f64) / elapsed;
+            let throughput = (recvd as f64) * (num_to_send as f64) / elapsed;
             println!("Data Size: {num_to_send} [B], Throughput: {throughput:.0} [B/s], Sent: {sent} [packets], Received: {recvd} [packets], Elapsed: {elapsed:.2} [s], Round-Trip Rate: {rate:.1} [packets/sec], Loss Rate: {loss_rate:.4} [percent], Mean Latency: {mean_latency_us:.0} [us]");
             // Reset counters
             sent = 0;
@@ -152,7 +152,7 @@ async fn main() {
                 }
             }
             // Increment number of bytes to send in each message
-            num_to_send = ((num_to_send + 1) % msg_bytes.len()).max(1);
+            num_to_send = ((num_to_send + 5) % msg_bytes.len()).max(1);
 
             // Reset timer at end so that it doesn't absorb timing from database comms
             last_spam = Instant::now();

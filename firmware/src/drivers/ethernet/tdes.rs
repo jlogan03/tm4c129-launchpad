@@ -90,11 +90,6 @@ impl TXDL {
         self
     }
 
-    /// Volatile read of the current descriptor
-    pub unsafe fn get(&self) -> TDES {
-        self.tdesref.read_volatile()
-    }
-
     /// Check if software owns this descriptor
     pub unsafe fn is_owned(&self) -> bool {
         let v = self.tdesref.read_volatile().v[0];

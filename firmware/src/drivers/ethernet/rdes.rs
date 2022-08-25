@@ -14,7 +14,7 @@ pub const RXBUFSIZE: usize = 1522; // 1522 is maximum size of standard frame wit
 ///
 /// We don't know where the descriptors are, so we have to chase the buffer around
 /// and hope for the best
-#[repr(C, align(4))]
+// #[repr(C, align(4))]
 pub struct RXDL {
     /// Address of start of descriptor list
     pub rxdladdr: *mut RDES,
@@ -79,11 +79,6 @@ impl RXDL {
             self.rdesref = self.rxdladdr;
         }
         self
-    }
-
-    /// Dereference the current descriptor
-    pub fn get(&self) -> RDES {
-        unsafe { *self.rdesref }
     }
 
     /// Check if software owns this descriptor

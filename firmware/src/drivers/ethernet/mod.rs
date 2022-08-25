@@ -55,7 +55,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 /// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
 /// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
 /// values within the struct, hence the repr(C).
-#[repr(C, align(4))]
+// #[repr(C, align(4))]
 pub struct Ethernet {
     // EMAC
     /// EMAC peripheral registers
@@ -177,16 +177,14 @@ impl Ethernet {
 
             // Did we actually find a frame to receive, or did we run out of descriptors?
             if !self.rxdl.is_owned() {
-                // Move to the DMA's current descriptor pointer so that we catch the read immediately later
+                // Move to the DMA's current descriptor pointer so that we catch the read immediately
                 self.rxdl.rdesref = self.emac.hosrxdesc.read().bits() as *mut RDES;
                 // There is no valid data to receive from the buffer
                 return Err(EthernetError::NothingToReceive);
             } else {
-                // There is a frame to receive
-                // We do not have jumbo frames enabled and are using store-and-forward,
-                // so the entire frame should be stored in a single buffer.
-                // Otherwise, we would have to handle frames spread across multiple descriptors/buffers.
-                let descr_buf = self.rxdl.get_buffer_pointer() as *mut [u8; RXBUFSIZE];
+                // There is a frame to receive. Get a handle to the buffer for this frame
+                let buffer_pointer = self.rxdl.get_buffer_pointer();
+                // let descr_buf = buffer_pointer as *mut [u8; RXBUFSIZE];
 
                 // Figure out how many bytes of data are valid
                 bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
@@ -194,10 +192,11 @@ impl Ethernet {
                 // Copy valid part of buffer into target buffer, making sure we don't run off the end anywhere
                 // We have to use a for-loop here instead of copying from slice to avoid a panic branch.
                 // This costs about 10us of round-trip latency.
-                let descr_buf_vals = descr_buf.read_volatile();
-                let ix = descr_buf_vals.len().min(bytes_received).min(buf.len()).max(1);
+                // Meanwhile, doing a volatile deref of each individual u8 here instead of dereferencing the entire buffer
+                // actually removes about 140us of roundtrip latency.
+                let ix = RXBUFSIZE.min(bytes_received).min(buf.len()).max(1);
                 for i in 0..ix {
-                    buf[i] = descr_buf_vals[i];
+                    buf[i] = ((buffer_pointer + i as u32) as *mut u8).read_volatile();
                 }
             }
 

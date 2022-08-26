@@ -191,7 +191,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     buffer: &mut [u8; RXBUFSIZE],
 ) {
     // Flush the EMAC peripheral's RX and TX buffers
-    enet.rxpush();
+    // enet.rxpush();
 
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {

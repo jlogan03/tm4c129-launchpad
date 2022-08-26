@@ -5,22 +5,26 @@ use core::fmt;
 use ufmt::derive::uDebug;
 
 /// Number of descriptors/buffer segments
-pub const TXDESCRS: usize = 16;
+pub const TXDESCRS: usize = 10;
 
 /// Number of bytes per buffer segment
 pub const TXBUFSIZE: usize = 400;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
 
+/// Word-aligned buffers
+#[repr(packed(4))]
+pub struct TxBuf([[u8; TXBUFSIZE]; TXDESCRS]);
+
 /// TX Descriptor List ring buffer
-#[repr(C, align(4))]
+#[repr(C, align(4))]  // Align of at least 4 required for DMA to access buffer
 pub struct TXDL {
+    /// Buffers sized for non-jumbo frames
+    pub buffers: TxBuf,
     /// Address of start of descriptor list
     pub txdladdr: *mut TDES,
     /// Address of current descriptor
     pub tdesref: *mut TDES,
     /// Descriptor data
     pub descriptors: [TDES; TXDESCRS],
-    /// Buffers sized for non-jumbo frames
-    pub buffers: [[u8; TXBUFSIZE]; TXDESCRS],
 }
 
 impl TXDL {
@@ -32,7 +36,7 @@ impl TXDL {
             txdladdr: 0 as *mut TDES,
             tdesref: 0 as *mut TDES,
             descriptors: [TDES { v: [0_u32; 8] }; TXDESCRS],
-            buffers: [[0_u8; TXBUFSIZE]; TXDESCRS],
+            buffers: TxBuf([[0_u8; TXBUFSIZE]; TXDESCRS]),
         };
         // Set descriptor list start pointer
         txdl.txdladdr = &mut (txdl.descriptors[0]) as *mut TDES;
@@ -42,7 +46,7 @@ impl TXDL {
             for i in 0..TXDESCRS {
                 // Populate pointers
                 txdl.tdesref = &mut (txdl.descriptors[i]) as *mut TDES;
-                let buffer_ptr = &mut (txdl.buffers[i]) as *mut [u8; TXBUFSIZE];
+                let buffer_ptr = &mut (txdl.buffers.0[i]) as *mut [u8; TXBUFSIZE];
                 txdl.set_buffer_pointer(buffer_ptr as u32);
                 if i < TXDESCRS - 1 {
                     txdl.set_next_pointer(&(txdl.descriptors[i + 1]) as *const TDES as u32);
@@ -50,11 +54,11 @@ impl TXDL {
                 else {
                     // This is the end of the ring. Point back toward the start and set the end-of-ring flag
                     txdl.set_next_pointer(txdl.txdladdr as u32);
-                    txdl.set_tdes0(TDES0::TER);  // End-of-ring
+                    // txdl.set_tdes0(TDES0::TER);  // End-of-ring
                 }
                 
                 // Replace source MAC address in frame with value programmed into peripheral
-                txdl.set_tdes1(TDES1::SaiReplace);
+                // txdl.set_tdes1(TDES1::SaiReplace);
 
                 // Enable ethernet checksum replacement
                 txdl.set_tdes0(TDES0::CRCR);
@@ -308,7 +312,7 @@ impl fmt::Debug for TXDL {
 ///
 /// See datasheet Figure 23-3 for layout.
 #[derive(Clone, Copy, uDebug)]
-#[repr(transparent)]
+#[repr(packed(4))]
 pub struct TDES {
     /// Content
     pub v: [u32; 8],

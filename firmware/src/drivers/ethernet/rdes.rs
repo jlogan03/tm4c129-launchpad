@@ -10,11 +10,15 @@ pub const RXDESCRS: usize = 40;
 /// Number of bytes per buffer segment
 pub const RXBUFSIZE: usize = 1522; // 1522 is maximum size of standard frame with vlan tag
 
+/// Word-aligned buffers
+#[repr(packed(4))]
+pub struct RxBuf([[u8; RXBUFSIZE]; RXDESCRS]);
+
 /// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
 ///
 /// We don't know where the descriptors are, so we have to chase the buffer around
 /// and hope for the best
-// #[repr(C, align(4))]
+#[repr(C, align(4))]
 pub struct RXDL {
     /// Address of start of descriptor list
     pub rxdladdr: *mut RDES,
@@ -23,7 +27,7 @@ pub struct RXDL {
     /// Descriptor data
     pub descriptors: [RDES; RXDESCRS],
     /// Buffers sized for non-jumbo frames
-    pub buffers: [[u8; RXBUFSIZE]; RXDESCRS],
+    pub buffers: RxBuf,
 }
 
 impl RXDL {
@@ -35,7 +39,7 @@ impl RXDL {
             rxdladdr: 0 as *mut RDES,
             rdesref: 0 as *mut RDES,
             descriptors: [RDES { v: [0_u32; 8] }; RXDESCRS],
-            buffers: [[0_u8; RXBUFSIZE]; RXDESCRS],
+            buffers: RxBuf([[0_u8; RXBUFSIZE]; RXDESCRS]),
         };
         // Set descriptor list start pointer
         rxdl.rxdladdr = &mut (rxdl.descriptors[0]) as *mut RDES;
@@ -43,15 +47,15 @@ impl RXDL {
         unsafe {
             for i in 0..RXDESCRS {
                 rxdl.rdesref = &mut (rxdl.descriptors[i]) as *mut RDES;
-                let buffer_ptr = &mut (rxdl.buffers[i]) as *mut [u8; RXBUFSIZE];
+                let buffer_ptr = &mut (rxdl.buffers.0[i]) as *mut [u8; RXBUFSIZE];
                 rxdl.set_buffer_pointer(buffer_ptr as u32);
 
                 if i < RXDESCRS - 1 {
                     rxdl.set_next_pointer(&(rxdl.descriptors[i + 1]) as *const RDES as u32);
                 } else {
-                    // This is the end of the ring. Point back toward the start and set the end-of-ring flag
+                    // This is the end of the ring. Point back toward the start.
                     rxdl.set_next_pointer(rxdl.rxdladdr as u32);
-                    rxdl.set_rdes1(RDES1::RER, None);
+                    // rxdl.set_rdes1(RDES1::RER, None); // Using the end-of-ring flag causes excessive latency
                 }
                 // Indicate descriptors are chained
                 rxdl.set_rdes1(RDES1::RCH, None);
@@ -291,7 +295,7 @@ impl fmt::Debug for RXDL {
 ///
 /// See datasheet Figure 23-4 for layout.
 #[derive(Clone, Copy, uDebug)]
-#[repr(transparent)]
+#[repr(packed(4))]
 pub struct RDES {
     /// Content
     pub v: [u32; 8],

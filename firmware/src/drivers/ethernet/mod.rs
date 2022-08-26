@@ -51,11 +51,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
-///
-/// Note the DMA controller requires the descriptors to be aligned on 32-bit words instead of bytes,
-/// hence the repr(align(4)). We also need safely-made pointers to address the actual location of the
-/// values within the struct, hence the repr(C).
-// #[repr(C, align(4))]
+#[repr(C, align(4))]
 pub struct Ethernet {
     // EMAC
     /// EMAC peripheral registers
@@ -135,15 +131,12 @@ impl Ethernet {
                     self.txdl.give();
 
                     // Push the packet through
-                    self.txpush();
+                    self.emacclear();
+                    self.txstart();
+                    self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
 
                     return Ok(());
                 } else {
-                    // We do not own the current descriptor and can't use it to send data
-                    // Go to the next descriptor and try that one
-                    self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
-                    self.txstart();
-
                     self.txdl.next();
                 }
             }
@@ -157,15 +150,15 @@ impl Ethernet {
         // Start from wherever the hardware is now
         let mut bytes_received: usize = 0;
 
+        // Poll the DMA again in case it was stalled due to lack of free descriptors
+        self.emacclear();
+        self.rxstart();  // Make sure the receive engine is enabled
+        self.emac.rxpolld.write(|w| unsafe{w.rpd().bits(0)});
+
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
             // and is owned by software, or we have checked all the descriptors
             for _ in 0..RXDESCRS {
-
-                // Poll the DMA again in case it was stalled due to lack of free descriptors
-                self.rxstart();  // Make sure the receive engine is enabled
-                self.emac.rxpolld.write(|w| w.rpd().bits(0));
-
                 let owned = self.rxdl.is_owned();
 
                 if owned {
@@ -184,7 +177,6 @@ impl Ethernet {
             } else {
                 // There is a frame to receive. Get a handle to the buffer for this frame
                 let buffer_pointer = self.rxdl.get_buffer_pointer();
-                // let descr_buf = buffer_pointer as *mut [u8; RXBUFSIZE];
 
                 // Figure out how many bytes of data are valid
                 bytes_received = self.rxdl.get_rdes0(RDES0::FL) as usize;
@@ -194,7 +186,7 @@ impl Ethernet {
                 // This costs about 10us of round-trip latency.
                 // Meanwhile, doing a volatile deref of each individual u8 here instead of dereferencing the entire buffer
                 // actually removes about 140us of roundtrip latency.
-                let ix = RXBUFSIZE.min(bytes_received).min(buf.len()).max(1);
+                let ix = RXBUFSIZE.min(bytes_received).min(buf.len());  // Make sure we can never run off the list
                 for i in 0..ix {
                     buf[i] = ((buffer_pointer + i as u32) as *mut u8).read_volatile();
                 }

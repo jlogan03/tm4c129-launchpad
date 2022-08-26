@@ -44,7 +44,7 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
 const IPSTART: usize = EthernetHeader::BYTE_LEN;
 const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
 const ARPSTART: usize = IPSTART;
-const MAX_ECHO: usize = 160; // Maximum number of bytes of UDP data to echo
+const MAX_ECHO: usize = 400; // Maximum number of bytes of UDP data to echo
 
 const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
 const IPADDR_DHCP_STATIC: IpV4Addr = ByteArray([10, 0, 0, 229]); // An arbitrary IP address in a typical DHCP block
@@ -141,45 +141,59 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         }
     }
 
+    for j in 0..TXDESCRS {
+        let _ = uwriteln!(uart, "TX buffer {} address mod-4: {}", j, unsafe{&board.enet.txdl.get_buffer_pointer()} % 4);
+        unsafe{board.enet.txdl.next()};
+    }
+
+    for j in 0..RXDESCRS {
+        let _ = uwriteln!(uart, "RX buffer {} address mod-4: {}", j, unsafe{&board.enet.rxdl.get_buffer_pointer()} % 4);
+        unsafe{board.enet.rxdl.next()};
+    }
+
+    use cortex_m::asm::nop;
     loop {
         // Check ethernet
         poll_ethernet(&mut board.enet, &mut uart, &mut udp, &mut buffer);
+        for _ in 0..100{
+            nop();
+        }
 
         // Check UART
-        while let Ok(ch) = uart.0.read() {
-            uwriteln!(uart, "byte read {:?}", ch);
-        }
+        // while let Ok(ch) = uart.0.read() {
+        //     uwriteln!(uart, "byte read {:?}", ch);
+        // }
 
-        loops = loops.wrapping_add(1);
+        // loops = loops.wrapping_add(1);
 
-        if loops % 10000 == 0 {
-            led_state = (led_state + 1) % 4;
-        }
+        // if loops % 10000 == 0 {
+        //     led_state = (led_state + 1) % 4;
+        // }
 
-        if *(&(board.button0).is_low().unwrap_or_default()) {
-            // Turn all the LEDs on
-            let _ = &(board.led0).set_high();
-            let _ = &(board.led1).set_high();
-            let _ = &(board.led2).set_high();
-            let _ = &(board.led3).set_high();
-        } else {
-            // Cycle through each of the 4 LEDs
-            if led_state == 0 {
-                let _ = &(board.led0).set_low();
-                let _ = &(board.led1).set_high();
-            } else if led_state == 1 {
-                let _ = &(board.led1).set_low();
-                let _ = &(board.led2).set_high();
-            } else if led_state == 2 {
-                let _ = &(board.led2).set_low();
-                let _ = &(board.led3).set_high();
-            } else if led_state == 3 {
-                let _ = &(board.led3).set_low();
-                let _ = &(board.led0).set_high();
-            } else {
-                continue;
-            }
-        }
+        // if *(&(board.button0).is_low().unwrap_or_default()) {
+        //     // Turn all the LEDs on
+        //     let _ = &(board.led0).set_high();
+        //     let _ = &(board.led1).set_high();
+        //     let _ = &(board.led2).set_high();
+        //     let _ = &(board.led3).set_high();
+        // } else {
+        //     // Cycle through each of the 4 LEDs
+        //     if led_state == 0 {
+        //         let _ = &(board.led0).set_low();
+        //         let _ = &(board.led1).set_high();
+        //     } else if led_state == 1 {
+        //         let _ = &(board.led1).set_low();
+        //         let _ = &(board.led2).set_high();
+        //     } else if led_state == 2 {
+        //         let _ = &(board.led2).set_low();
+        //         let _ = &(board.led3).set_high();
+        //     } else if led_state == 3 {
+        //         let _ = &(board.led3).set_low();
+        //         let _ = &(board.led0).set_high();
+        //     } else {
+        //         continue;
+        //     }
+        // }
     }
 }
 
@@ -192,6 +206,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
 ) {
     // Flush the EMAC peripheral's RX and TX buffers
     // enet.rxpush();
+    // enet.txpush();
 
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {

@@ -51,7 +51,7 @@ pub fn get_rom_macaddr(flash: &FLASH_CTRL) -> [u8; 6] {
 ///
 /// Assumes speed is 100 base T in full duplex mode, using internal PHY, PHY uses MDIX and autonegotiation,
 /// 8-word descriptor size, MMC interrupts all masked, using source address from descriptor (populated by software)
-#[repr(C, align(4))]
+#[repr(align(4))]
 pub struct Ethernet {
     // EMAC
     /// EMAC peripheral registers
@@ -69,10 +69,10 @@ pub struct Ethernet {
     pub src_macaddr: [u8; 6],
 
     // RX/TX structures
-    /// Volatile access to TX descriptor list
-    pub txdl: TXDL,
     /// Volatile access to RX descriptor list
     pub rxdl: RXDL,
+    /// Volatile access to TX descriptor list
+    pub txdl: TXDL,
 }
 
 impl Ethernet {

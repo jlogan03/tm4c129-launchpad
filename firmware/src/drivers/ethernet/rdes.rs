@@ -3,31 +3,33 @@
 use core::fmt;
 
 use ufmt::derive::uDebug;
+use static_assertions::const_assert;
 
 /// Number of descriptors/buffer segments
 pub const RXDESCRS: usize = 40;
 
 /// Number of bytes per buffer segment
-pub const RXBUFSIZE: usize = 1522; // 1522 is maximum size of standard frame with vlan tag
+/// Length MUST be a multiple of 4, or we end up with misalignment at the boundaries
+pub const RXBUFSIZE: usize = 1024; // 1522 is maximum size of standard frame with vlan tag
+
+const_assert!(RXBUFSIZE % 4 == 0);
+const_assert!(RXDESCRS > 3);
 
 /// Word-aligned buffers
-#[repr(packed(4))]
+#[repr(C, align(4))]
 pub struct RxBuf([[u8; RXBUFSIZE]; RXDESCRS]);
 
-/// RX Descriptor List ring using descriptors initialized by the microcontroller in SRAM
-///
-/// We don't know where the descriptors are, so we have to chase the buffer around
-/// and hope for the best
+/// RX descriptor ring
 #[repr(C, align(4))]
 pub struct RXDL {
-    /// Address of start of descriptor list
-    pub rxdladdr: *mut RDES,
-    /// Address of current descriptor
-    pub rdesref: *mut RDES,
     /// Descriptor data
     pub descriptors: [RDES; RXDESCRS],
     /// Buffers sized for non-jumbo frames
     pub buffers: RxBuf,
+    /// Address of start of descriptor list
+    pub rxdladdr: *mut RDES,
+    /// Address of current descriptor
+    pub rdesref: *mut RDES,
 }
 
 impl RXDL {
@@ -55,7 +57,7 @@ impl RXDL {
                 } else {
                     // This is the end of the ring. Point back toward the start.
                     rxdl.set_next_pointer(rxdl.rxdladdr as u32);
-                    // rxdl.set_rdes1(RDES1::RER, None); // Using the end-of-ring flag causes excessive latency
+                    rxdl.set_rdes1(RDES1::RER, None); // Using the end-of-ring flag causes excessive latency
                 }
                 // Indicate descriptors are chained
                 rxdl.set_rdes1(RDES1::RCH, None);
@@ -295,7 +297,7 @@ impl fmt::Debug for RXDL {
 ///
 /// See datasheet Figure 23-4 for layout.
 #[derive(Clone, Copy, uDebug)]
-#[repr(packed(4))]
+#[repr(C, align(4))]
 pub struct RDES {
     /// Content
     pub v: [u32; 8],

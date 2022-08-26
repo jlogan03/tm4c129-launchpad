@@ -3,28 +3,34 @@
 use core::fmt;
 
 use ufmt::derive::uDebug;
+use static_assertions::const_assert;
 
 /// Number of descriptors/buffer segments
-pub const TXDESCRS: usize = 10;
+pub const TXDESCRS: usize = 16;
 
 /// Number of bytes per buffer segment
-pub const TXBUFSIZE: usize = 400;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
+/// Length MUST be a multiple of 4, or we end up with misalignment at the boundaries
+pub const TXBUFSIZE: usize = 600;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
+
+const_assert!(TXBUFSIZE % 4 == 0);
+const_assert!(TXDESCRS > 3);
 
 /// Word-aligned buffers
-#[repr(packed(4))]
+#[repr(C, align(4))]
+// #[repr(transparent)]
 pub struct TxBuf([[u8; TXBUFSIZE]; TXDESCRS]);
 
-/// TX Descriptor List ring buffer
+/// TX descriptor ring
 #[repr(C, align(4))]  // Align of at least 4 required for DMA to access buffer
 pub struct TXDL {
+    /// Descriptor data
+    pub descriptors: [TDES; TXDESCRS],
     /// Buffers sized for non-jumbo frames
     pub buffers: TxBuf,
     /// Address of start of descriptor list
     pub txdladdr: *mut TDES,
     /// Address of current descriptor
     pub tdesref: *mut TDES,
-    /// Descriptor data
-    pub descriptors: [TDES; TXDESCRS],
 }
 
 impl TXDL {
@@ -312,7 +318,7 @@ impl fmt::Debug for TXDL {
 ///
 /// See datasheet Figure 23-3 for layout.
 #[derive(Clone, Copy, uDebug)]
-#[repr(packed(4))]
+#[repr(C, align(4))]
 pub struct TDES {
     /// Content
     pub v: [u32; 8],

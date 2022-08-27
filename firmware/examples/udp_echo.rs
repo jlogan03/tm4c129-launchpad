@@ -1,32 +1,27 @@
-//! An example of (fairly manual) UDP comms using a statically self-assigned IP address
+//! An example of (fairly manual) UDP comms using a statically self-assigned IP address.
 
 #![no_std]
 #![no_main]
 
-extern crate embedded_hal;
-extern crate tm4c129_launchpad;
-extern crate tm4c129x_hal;
-
 use core::convert::Infallible;
 use core::fmt::Write;
-use ufmt::*;
 
-// use embedded_hal::prelude::*;
 use embedded_hal::blocking::delay::DelayUs;
 use embedded_hal::digital::v2::*; // GPIO set high/low
-use embedded_hal::prelude::_embedded_hal_serial_Read;
 
-use tm4c129x_hal::gpio::GpioExt;
+use tm4c129x_hal::gpio::GpioExt;  // Split GPIO port
 
-use tm4c129x_hal::serial;
-use tm4c129x_hal::serial::*;
+use tm4c129x_hal::serial::{UART0, Serial, NewlineMode};
 use tm4c129x_hal::time::Bps;
 
-use catnip::{arp::*, dhcp::*, enet::*, ip::*, udp::*, *};
 use tm4c129_launchpad::{
     board,
     drivers::ethernet::{socket::UDPSocket, Ethernet, RXBUFSIZE, RXDESCRS, TXDESCRS},
 };
+
+use ufmt::{uWrite, uwriteln};
+use catnip::{arp::{ArpPayload, ArpOperation}, dhcp::DhcpFixedPayload, enet::*, ip::*, udp::*, *};
+
 
 /// Wrapper for UART0 to allow us to use ufmt for panic-never compatible comms
 struct SerialUWriteable<UART, TX, RX, RTS, CTS>(Serial<UART, TX, RX, RTS, CTS>);
@@ -47,7 +42,6 @@ const ARPSTART: usize = IPSTART;
 const MAX_ECHO: usize = 400; // Maximum number of bytes of UDP data to echo
 
 const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
-const IPADDR_DHCP_STATIC: IpV4Addr = ByteArray([10, 0, 0, 229]); // An arbitrary IP address in a typical DHCP block
 const DST_IPADDR_STATIC: IpV4Addr = ByteArray([10, 0, 0, 127]); // The IP address of the (probably desktop) machine we are talking to
 
 #[no_mangle]
@@ -63,7 +57,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         (),
         (),
         Bps(115200),
-        serial::NewlineMode::SwapLFtoCRLF,
+        NewlineMode::SwapLFtoCRLF,
         board::clocks(),
         &board.power_control,
     ));
@@ -155,45 +149,37 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     loop {
         // Check ethernet
         poll_ethernet(&mut board.enet, &mut uart, &mut udp, &mut buffer);
-        for _ in 0..100{
-            nop();
+
+        loops = loops.wrapping_add(1);
+
+        if loops % 10000 == 0 {
+            led_state = (led_state + 1) % 4;
         }
 
-        // Check UART
-        // while let Ok(ch) = uart.0.read() {
-        //     uwriteln!(uart, "byte read {:?}", ch);
-        // }
-
-        // loops = loops.wrapping_add(1);
-
-        // if loops % 10000 == 0 {
-        //     led_state = (led_state + 1) % 4;
-        // }
-
-        // if *(&(board.button0).is_low().unwrap_or_default()) {
-        //     // Turn all the LEDs on
-        //     let _ = &(board.led0).set_high();
-        //     let _ = &(board.led1).set_high();
-        //     let _ = &(board.led2).set_high();
-        //     let _ = &(board.led3).set_high();
-        // } else {
-        //     // Cycle through each of the 4 LEDs
-        //     if led_state == 0 {
-        //         let _ = &(board.led0).set_low();
-        //         let _ = &(board.led1).set_high();
-        //     } else if led_state == 1 {
-        //         let _ = &(board.led1).set_low();
-        //         let _ = &(board.led2).set_high();
-        //     } else if led_state == 2 {
-        //         let _ = &(board.led2).set_low();
-        //         let _ = &(board.led3).set_high();
-        //     } else if led_state == 3 {
-        //         let _ = &(board.led3).set_low();
-        //         let _ = &(board.led0).set_high();
-        //     } else {
-        //         continue;
-        //     }
-        // }
+        if *(&(board.button0).is_low().unwrap_or_default()) {
+            // Turn all the LEDs on
+            let _ = &(board.led0).set_high();
+            let _ = &(board.led1).set_high();
+            let _ = &(board.led2).set_high();
+            let _ = &(board.led3).set_high();
+        } else {
+            // Cycle through each of the 4 LEDs
+            if led_state == 0 {
+                let _ = &(board.led0).set_low();
+                let _ = &(board.led1).set_high();
+            } else if led_state == 1 {
+                let _ = &(board.led1).set_low();
+                let _ = &(board.led2).set_high();
+            } else if led_state == 2 {
+                let _ = &(board.led2).set_low();
+                let _ = &(board.led3).set_high();
+            } else if led_state == 3 {
+                let _ = &(board.led3).set_low();
+                let _ = &(board.led0).set_high();
+            } else {
+                continue;
+            }
+        }
     }
 }
 
@@ -204,9 +190,6 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     udp: &mut UDPSocket,
     buffer: &mut [u8; RXBUFSIZE],
 ) {
-    // Flush the EMAC peripheral's RX and TX buffers
-    // enet.rxpush();
-    // enet.txpush();
 
     // Receive all buffered frames
     while let Ok(num_bytes) = enet.receive(buffer) {
@@ -266,8 +249,6 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                                             uwriteln!(uart, "\nError echoing UDP packet: {:?}", x);
                                     }
                                 };
-
-                                // enet.txpush();
                             }
                             _ => {}
                         }

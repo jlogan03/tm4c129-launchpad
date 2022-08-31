@@ -1,6 +1,6 @@
 //! Build a UDP/IP Ethernet packet and get its representation as network bytes
 
-use catnip::{enet::*, ip::*, udp::*, *};
+use catnip::*;
 
 use core::ptr::read_volatile;
 

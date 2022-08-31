@@ -20,7 +20,11 @@ use tm4c129_launchpad::{
 };
 
 use ufmt::{uWrite, uwriteln};
-use catnip::{arp::{ArpPayload, ArpOperation}, dhcp::DhcpFixedPayload, enet::*, ip::*, udp::*, *};
+use catnip::{arp::{ArpPayload, ArpOperation}, dhcp::DhcpFixedPayload, *};
+
+
+const MAX_ECHO: usize = 400; // Maximum number of bytes of UDP data to echo
+const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
 
 
 /// Wrapper for UART0 to allow us to use ufmt for panic-never compatible comms
@@ -35,13 +39,6 @@ impl<TX, RX, RTS, CTS> uWrite for SerialUWriteable<UART0, TX, RX, RTS, CTS> {
     }
 }
 
-// IP
-const IPSTART: usize = EthernetHeader::BYTE_LEN;
-const UDPSTART: usize = IPSTART + IpV4Header::BYTE_LEN;
-const ARPSTART: usize = IPSTART;
-const MAX_ECHO: usize = 400; // Maximum number of bytes of UDP data to echo
-
-const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) -> ! {
@@ -198,12 +195,12 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
                 match ipheader.protocol {
                     // UDP packet
                     Protocol::Udp => {
-                        let udpheader = UdpHeader::read_bytes(&buffer[UDPSTART..]);
+                        let udpheader = UdpHeader::read_bytes(&buffer[EthernetHeader::BYTE_LEN + IpV4Header::BYTE_LEN..]);
                         // uwriteln!(uart, "{:?}", udpheader);
 
                         match udpheader.dst_port {
                             x if (x == DHCP_CLIENT_PORT) || (x == DHCP_SERVER_PORT) => {
-                                // let dhcp_bytes = &buffer[UDPSTART + UdpHeader::BYTE_LEN..];
+                                // let dhcp_bytes = &buffer[EthernetHeader::BYTE_LEN + IpV4Header::BYTE_LEN + UdpHeader::BYTE_LEN..];
                                 // let dhcp_fixed_payload = DhcpFixedPayload::read_bytes(&dhcp_bytes);
                                 // let _ = uwriteln!(uart, "{:?}", dhcp_fixed_payload);
                             }
@@ -247,7 +244,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
             }
             EtherType::Arp => {
                 // ARP packet
-                let arp_incoming = ArpPayload::read_bytes(&buffer[ARPSTART..]);
+                let arp_incoming = ArpPayload::read_bytes(&buffer[EthernetHeader::BYTE_LEN..]);
                 // uwriteln!(uart, "{:?}", &arp_incoming);
 
                 // Send an ARP response

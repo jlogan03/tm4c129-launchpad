@@ -1,3 +1,11 @@
+//! Desktop counterpart to the udp_echo board example.
+//! 
+//! Optionally sends metrics to an InfluxDB instance which is assumed to be
+//! running locally but could easily be pointed to another IP address.
+//! 
+//! The program will prompt for a login token for the database during startup;
+//! to run without sending metrics, just leave the token blank.
+
 use chrono::Utc;
 use hyper::{Body, Client, Method, Request};
 use rpassword::prompt_password;
@@ -6,7 +14,7 @@ use std::time::Instant;
 use std::{thread, time::Duration};
 use core_affinity;
 
-const INFLUXDB_PORT: u16 = 8886;
+const INFLUXDB_PORT: u16 = 8886;  // 8086 is standard, but it can be configured for others
 
 struct Influxdb {
     pub port: u16,
@@ -27,7 +35,7 @@ async fn main() {
         port: INFLUXDB_PORT,
         bucket: "test",
         org: "isthmus",
-        token: prompt_password("InfluxDB access token: ").unwrap(),
+        token: prompt_password("InfluxDB access token (leave blank to skip): ").unwrap(),
     };
     let idb_uri = format!(
         "http://localhost:{}/api/v2/write?org={}&bucket={}&precision=ns",
@@ -35,8 +43,7 @@ async fn main() {
     );
     let token_str = format!("Token {}", &idb.token);
 
-    // 10.0.0.1 is the gateway and *.2 is the DHCP server
-    // 0.0.0.0 -> broadcast
+    // Board's IP address
     let dst_addr = "169.254.1.229:8052";
 
     // Bind a port
@@ -110,7 +117,9 @@ async fn main() {
         // Once per spam interval, print outputs to terminal and send data to influxdb
         let elapsed = last_spam.elapsed().as_secs_f64();
         if elapsed > spam_interval {
+            //
             // Keep running average of roundtrip latency and drop rate
+            //
             let mean_latency_us = latencies.iter().sum::<f64>() / (latencies.len() as f64) * 1e6;
             let rate = (recvd as f64) / elapsed;
             let loss_rate = ((sent - recvd) as f64) / (sent as f64) * 100.0;
@@ -120,7 +129,9 @@ async fn main() {
             sent = 0;
             recvd = 0;
 
+            //
             // Send stored values to influxdb and clear buffers
+            //
             let mut lines: Vec<String> = Vec::new();
             //    Log metrics
             while times.len() >= 1 {
@@ -141,24 +152,26 @@ async fn main() {
                 "board,units=B roundtrip_data_size={num_to_send} {t}"
             ));
             //    Send data via HTTP request
-            let req = Request::builder()
-                .method(Method::POST)
-                .uri(&idb_uri)
-                .header("Authorization", &token_str)
-                .header("Content-Type", "text/plain; charset=utf-8")
-                .header("Accept", "application/json")
-                .body(Body::from(lines.join("\n")))
-                .unwrap();
-            // We need to block on this request to avoid clogging the wire while the test is in progress
-            // Check the response but only print if there was an error
-            let resp = client.request(req).await;
-            match resp {
-                Ok(x) => match x.status().is_success() {
-                    true => {}
-                    false => println!("{:?}", x),
-                },
-                Err(x) => {
-                    println!("{:?}", x);
+            if token_str != "Token " {
+                let req = Request::builder()
+                    .method(Method::POST)
+                    .uri(&idb_uri)
+                    .header("Authorization", &token_str)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .header("Accept", "application/json")
+                    .body(Body::from(lines.join("\n")))
+                    .unwrap();
+                // We need to block on this request to avoid clogging the wire while the test is in progress
+                // Check the response but only print if there was an error
+                let resp = client.request(req).await;
+                match resp {
+                    Ok(x) => match x.status().is_success() {
+                        true => {}
+                        false => println!("{:?}", x),
+                    },
+                    Err(x) => {
+                        println!("{:?}", x);
+                    }
                 }
             }
 

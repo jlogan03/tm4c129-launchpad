@@ -1,5 +1,5 @@
 [package]
-name = "udpclient"
+name = "udp_echo"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.20.1", features = ["full"] }
+hyper = { version = "0.14.20", features = ["full"] }
 chrono = "0.4.22"
 rpassword = "7.0.0"
-hyper = { version = "0.14.20", features = ["full"] }
 core_affinity = "0.5.10"

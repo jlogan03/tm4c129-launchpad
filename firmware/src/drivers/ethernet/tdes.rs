@@ -6,7 +6,7 @@ use ufmt::derive::uDebug;
 use static_assertions::const_assert;
 
 /// Number of descriptors/buffer segments
-pub const TXDESCRS: usize = 16;
+pub const TXDESCRS: usize = 24;
 
 /// Number of bytes per buffer segment
 /// Length MUST be a multiple of 4, or we end up with misalignment at the boundaries
@@ -17,7 +17,6 @@ const_assert!(TXDESCRS > 3);
 
 /// Word-aligned buffers
 #[repr(C, align(4))]
-// #[repr(transparent)]
 pub struct TxBuf([[u8; TXBUFSIZE]; TXDESCRS]);
 
 /// TX descriptor ring
@@ -60,20 +59,19 @@ impl TXDL {
                 else {
                     // This is the end of the ring. Point back toward the start and set the end-of-ring flag
                     txdl.set_next_pointer(txdl.txdladdr as u32);
-                    // txdl.set_tdes0(TDES0::TER);  // End-of-ring
+                    txdl.set_tdes0(TDES0::TER);  // End-of-ring
                 }
                 
                 // Replace source MAC address in frame with value programmed into peripheral
-                // txdl.set_tdes1(TDES1::SaiReplace);
+                txdl.set_tdes1(TDES1::SaiReplace);
 
                 // Enable ethernet checksum replacement
                 txdl.set_tdes0(TDES0::CRCR);
                 txdl.set_tdes0(TDES0::DC);  // Set this flag to replace existing blank CRC per datasheet table 20-19
 
                 // Enable IPV4 & UDPV4 checksum replacement
-                // This does not appear to work at all
-                // txdl.set_tdes0(TDES0::CicFull);
-                // txdl.set_tdes0(TDES0::CicIPV4);
+                // This does not appear to work at all, but disabling it increases latency by 2us
+                txdl.set_tdes0(TDES0::CicFull);
 
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);

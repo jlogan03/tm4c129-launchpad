@@ -4,6 +4,7 @@ use rpassword::prompt_password;
 use std::net::UdpSocket;
 use std::time::Instant;
 use std::{thread, time::Duration};
+use core_affinity;
 
 const INFLUXDB_PORT: u16 = 8886;
 
@@ -16,6 +17,10 @@ struct Influxdb {
 
 #[tokio::main]
 async fn main() {
+    // Set core affinity; otherwise, we drop a bunch of packets every time the thread relocates
+    let core_ids = core_affinity::get_core_ids().unwrap();
+    core_affinity::set_for_current(*core_ids.last().unwrap());  // Set affinity to last core
+
     // Set up influxdb
     let client = Client::new();
     let idb: Influxdb = Influxdb {
@@ -64,20 +69,19 @@ async fn main() {
     let mut i = 0;
     let mut sent: u64 = 0;
     let mut recvd: u64 = 0;
-    let timeout = Duration::from_micros(2000).as_secs_f64();
+    let timeout = Duration::from_micros(500).as_secs_f64();
     let spam_interval = Duration::from_millis(1000).as_secs_f64();
     let mut last_spam = Instant::now();
     let mut latency: f64;
-    let mut msg_bytes = [0_u8; 400];
-    let mut num_to_send = 1;
+    let mut msg_bytes = [0_u8; 160];
+    let num_to_send = msg_bytes.len();
     loop {
-        // Send a unique message to the device, varying the length on each
-        // experiment to examine the effect of packet size
+        // Send a unique message to the device
         let bytes = (i as u64).to_be_bytes();
         for j in 0..msg_bytes.len() {
             msg_bytes[j] = bytes[j % 8];
         }
-        match socket.send_to(&msg_bytes[..num_to_send], dst_addr) {
+        match socket.send_to(&msg_bytes[..], dst_addr) {
             Ok(_) => {}
             Err(x) => println!("{i} Data send failure: {x:?}"),
         }
@@ -90,7 +94,7 @@ async fn main() {
             if latency > timeout {
                 break 'outer;
             } else if let Ok((amt, _)) = socket.recv_from(&mut buf) {
-                if &buf[..amt] == &msg_bytes[..num_to_send] {
+                if &buf[..amt] == &msg_bytes[..] {
                     recvd += 1;
                     // Store values to send to influxdb
                     latencies.push(latency);
@@ -127,9 +131,15 @@ async fn main() {
             //    Log aggregate metrics
             let t = Utc::now().timestamp_nanos();
             lines.push(format!("board,units=Hz roundtrip_rate={rate} {t}"));
-            lines.push(format!("board,units=percent roundtrip_loss_rate={loss_rate} {t}"));
-            lines.push(format!("board,units=B/s roundtrip_throughput={throughput} {t}"));
-            lines.push(format!("board,units=B roundtrip_data_size={num_to_send} {t}"));
+            lines.push(format!(
+                "board,units=percent roundtrip_loss_rate={loss_rate} {t}"
+            ));
+            lines.push(format!(
+                "board,units=B/s roundtrip_throughput={throughput} {t}"
+            ));
+            lines.push(format!(
+                "board,units=B roundtrip_data_size={num_to_send} {t}"
+            ));
             //    Send data via HTTP request
             let req = Request::builder()
                 .method(Method::POST)
@@ -151,9 +161,6 @@ async fn main() {
                     println!("{:?}", x);
                 }
             }
-            // Increment number of bytes to send in each message
-            // num_to_send = ((num_to_send + 5) % msg_bytes.len()).max(1);
-            num_to_send = 160;
 
             // Reset timer at end so that it doesn't absorb timing from database comms
             last_spam = Instant::now();

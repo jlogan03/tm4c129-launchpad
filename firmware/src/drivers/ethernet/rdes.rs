@@ -57,7 +57,7 @@ impl RXDL {
                 } else {
                     // This is the end of the ring. Point back toward the start.
                     rxdl.set_next_pointer(rxdl.rxdladdr as u32);
-                    rxdl.set_rdes1(RDES1::RER, None); // Using the end-of-ring flag causes excessive latency
+                    rxdl.set_rdes1(RDES1::RER, None);
                 }
                 // Indicate descriptors are chained
                 rxdl.set_rdes1(RDES1::RCH, None);

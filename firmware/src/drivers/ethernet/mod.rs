@@ -134,14 +134,15 @@ impl Ethernet {
                     self.emacclear();
                     self.txstart();
                     self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
-
                     return Ok(());
+                    
                 } else {
                     self.txdl.next();
                 }
             }
         }
         // We checked every descriptor and none of them are available
+        self.txpush();  // Try to get the TX engine moving in case it has stalled out
         return Err(EthernetError::DescriptorUnavailable);
     }
 
@@ -387,8 +388,8 @@ impl Ethernet {
     pub fn txpush(&mut self) {
         self.emacclear();
         for _ in 0..TXDESCRS {
-            self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
             self.txstart();
+            self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
         }
     }
 

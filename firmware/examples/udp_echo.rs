@@ -16,7 +16,7 @@ use tm4c129x_hal::time::Bps;
 
 use tm4c129_launchpad::{
     board,
-    drivers::ethernet::{socket::UDPSocket, Ethernet, RXBUFSIZE, RXDESCRS, TXDESCRS},
+    drivers::ethernet::{socket::UDPSocket, Ethernet, RXBUFSIZE},
 };
 
 use ufmt::{uWrite, uwriteln};
@@ -42,7 +42,6 @@ const ARPSTART: usize = IPSTART;
 const MAX_ECHO: usize = 400; // Maximum number of bytes of UDP data to echo
 
 const IPADDR_LINK_LOCAL_STATIC: IpV4Addr = ByteArray([169, 254, 1, 229]); // An arbitrary IP address in the link-local block
-const DST_IPADDR_STATIC: IpV4Addr = ByteArray([10, 0, 0, 127]); // The IP address of the (probably desktop) machine we are talking to
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) -> ! {
@@ -72,13 +71,13 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     // Ethernet receive buffer
     let mut buffer = [0_u8; RXBUFSIZE];
 
-    // UDP socket
+    // UDP socket for echo
     let mut udp = UDPSocket {
         src_macaddr: MacAddr::new(board.enet.src_macaddr),
         src_ipaddr: IPADDR_LINK_LOCAL_STATIC,
         src_port: 8052,
         dst_macaddr: MacAddr::BROADCAST,
-        dst_ipaddr: DST_IPADDR_STATIC,
+        dst_ipaddr: IpV4Addr::ANY,
         dst_port: 8053,
         id: 0,
     };
@@ -133,16 +132,6 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         Err(x) => {
             let _ = uwriteln!(uart, "\nError sending DHCP INFORM: {:?}", x);
         }
-    }
-
-    for j in 0..TXDESCRS {
-        let _ = uwriteln!(uart, "TX buffer {} address mod-4: {}", j, unsafe{&board.enet.txdl.get_buffer_pointer()} % 4);
-        unsafe{board.enet.txdl.next()};
-    }
-
-    for j in 0..RXDESCRS {
-        let _ = uwriteln!(uart, "RX buffer {} address mod-4: {}", j, unsafe{&board.enet.rxdl.get_buffer_pointer()} % 4);
-        unsafe{board.enet.rxdl.next()};
     }
 
     use cortex_m::asm::nop;
@@ -298,6 +287,6 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
         };
     }
 
-    // Flush EMAC peripheral's TX buffers
+    // Make sure the TX engine consumes the emitted packets
     enet.txpush();
 }

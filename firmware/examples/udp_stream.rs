@@ -175,7 +175,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     buffer: &mut [u8; RXBUFSIZE],
 ) {
     // Send a UDP packet, ignoring the error if the buffer is full
-    match udp.transmit(enet, [0x17_u8; 1200], Some(1200)) {
+    match udp.transmit(enet, [0x17_u8; 1450], Some(1450)) {
         Ok(_) => {}
         Err(x) => {
             let _ = uwriteln!(uart, "UDP TX error: {:?}", x);

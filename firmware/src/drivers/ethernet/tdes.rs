@@ -10,7 +10,7 @@ pub const TXDESCRS: usize = 24;
 
 /// Number of bytes per buffer segment
 /// Length MUST be a multiple of 4, or we end up with misalignment at the boundaries
-pub const TXBUFSIZE: usize = 1524;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
+pub const TXBUFSIZE: usize = 1520;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
 
 const_assert!(TXBUFSIZE % 4 == 0);
 const_assert!(TXDESCRS > 3);

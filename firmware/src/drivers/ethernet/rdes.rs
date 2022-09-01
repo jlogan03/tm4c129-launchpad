@@ -6,11 +6,11 @@ use ufmt::derive::uDebug;
 use static_assertions::const_assert;
 
 /// Number of descriptors/buffer segments
-pub const RXDESCRS: usize = 40;
+pub const RXDESCRS: usize = 30;
 
 /// Number of bytes per buffer segment
 /// Length MUST be a multiple of 4, or we end up with misalignment at the boundaries
-pub const RXBUFSIZE: usize = 1024; // 1522 is maximum size of standard frame with vlan tag
+pub const RXBUFSIZE: usize = 1524; // 1522 is maximum size of standard frame with vlan tag
 
 const_assert!(RXBUFSIZE % 4 == 0);
 const_assert!(RXDESCRS > 3);

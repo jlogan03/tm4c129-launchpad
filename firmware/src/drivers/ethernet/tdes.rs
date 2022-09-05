@@ -2,23 +2,34 @@
 
 use core::fmt;
 
+use ufmt::derive::uDebug;
+use static_assertions::const_assert;
+
 /// Number of descriptors/buffer segments
-pub const TXDESCRS: usize = 4;
+pub const TXDESCRS: usize = 24;
 
 /// Number of bytes per buffer segment
-pub const TXBUFSIZE: usize = 1522;  // Maximum size of standard frame
+/// Length MUST be a multiple of 4, or we end up with misalignment at the boundaries
+pub const TXBUFSIZE: usize = 1520;  // 1522 is maximum size of standard frame; this should be tuned to the maximum we intend to send
 
-/// TX Descriptor List ring buffer
+const_assert!(TXBUFSIZE % 4 == 0);
+const_assert!(TXDESCRS > 3);
+
+/// Word-aligned buffers
 #[repr(C, align(4))]
+pub struct TxBuf([[u8; TXBUFSIZE]; TXDESCRS]);
+
+/// TX descriptor ring
+#[repr(C, align(4))]  // Align of at least 4 required for DMA to access buffer
 pub struct TXDL {
+    /// Descriptor data
+    pub descriptors: [TDES; TXDESCRS],
+    /// Buffers sized for non-jumbo frames
+    pub buffers: TxBuf,
     /// Address of start of descriptor list
     pub txdladdr: *mut TDES,
     /// Address of current descriptor
     pub tdesref: *mut TDES,
-    /// Descriptor data
-    pub descriptors: [TDES; TXDESCRS],
-    /// Buffers sized for non-jumbo frames
-    pub buffers: [[u8; TXBUFSIZE]; TXDESCRS],
 }
 
 impl TXDL {
@@ -30,7 +41,7 @@ impl TXDL {
             txdladdr: 0 as *mut TDES,
             tdesref: 0 as *mut TDES,
             descriptors: [TDES { v: [0_u32; 8] }; TXDESCRS],
-            buffers: [[0_u8; TXBUFSIZE]; TXDESCRS],
+            buffers: TxBuf([[0_u8; TXBUFSIZE]; TXDESCRS]),
         };
         // Set descriptor list start pointer
         txdl.txdladdr = &mut (txdl.descriptors[0]) as *mut TDES;
@@ -40,7 +51,7 @@ impl TXDL {
             for i in 0..TXDESCRS {
                 // Populate pointers
                 txdl.tdesref = &mut (txdl.descriptors[i]) as *mut TDES;
-                let buffer_ptr = &mut (txdl.buffers[i]) as *mut [u8; TXBUFSIZE];
+                let buffer_ptr = &mut (txdl.buffers.0[i]) as *mut [u8; TXBUFSIZE];
                 txdl.set_buffer_pointer(buffer_ptr as u32);
                 if i < TXDESCRS - 1 {
                     txdl.set_next_pointer(&(txdl.descriptors[i + 1]) as *const TDES as u32);
@@ -50,9 +61,21 @@ impl TXDL {
                     txdl.set_next_pointer(txdl.txdladdr as u32);
                     txdl.set_tdes0(TDES0::TER);  // End-of-ring
                 }
+                
+                // Replace source MAC address in frame with value programmed into peripheral
+                txdl.set_tdes1(TDES1::SaiReplace);
+
+                // Enable ethernet checksum replacement
+                txdl.set_tdes0(TDES0::CRCR);
+                txdl.set_tdes0(TDES0::DC);  // Set this flag to replace existing blank CRC per datasheet table 20-19
+
+                // Enable IPV4 & UDPV4 checksum replacement
+                // This does not appear to work at all, but disabling it increases latency by 2us
+                txdl.set_tdes0(TDES0::CicFull);
+
                 // We are not using multi-buffer frames; set both start of frame and end of frame flags
                 txdl.set_tdes0(TDES0::FS);
-                // txdl.set_tdes0(TDES0::LS);
+                txdl.set_tdes0(TDES0::LS);
 
                 txdl.set_tdes0(TDES0::TCH);  // Next descriptor is chained
             }
@@ -73,11 +96,6 @@ impl TXDL {
             self.tdesref = self.txdladdr;
         }
         self
-    }
-
-    /// Volatile read of the current descriptor
-    pub unsafe fn get(&self) -> TDES {
-        self.tdesref.read_volatile()
     }
 
     /// Check if software owns this descriptor
@@ -297,8 +315,8 @@ impl fmt::Debug for TXDL {
 /// values within the struct, hence the repr(C).
 ///
 /// See datasheet Figure 23-3 for layout.
-#[derive(Clone, Copy)]
-#[repr(transparent)]
+#[derive(Clone, Copy, uDebug)]
+#[repr(C, align(4))]
 pub struct TDES {
     /// Content
     pub v: [u32; 8],
@@ -306,7 +324,7 @@ pub struct TDES {
 
 /// TX descriptor field masks for the first word (TDES0)
 /// See datasheet Table 23-2
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(u32)]
 pub enum TDES0 {
     // Status flag set by the DMA or the user to transfer ownership
@@ -333,7 +351,7 @@ pub enum TDES0 {
     /// Insert IPV4 checksum & TCP/UDP checksum without pseudoheader
     CicFrameOnly = 2 << 22,
     /// Insert IPV4 checksum & TCP/UDP checksum including pseudoheader (per the actual standard)
-    CicFull = 3 << 22,
+    CicFull = 0x00C00000,
     /// Transmit End of Ring: this descriptor is the last one in the ring
     TER = 1 << 21,
     /// Transmit Chain: the second pointer field is a pointer to the next descriptor, not a buffer
@@ -382,7 +400,7 @@ pub enum TDES0 {
 
 /// TX descriptor field masks for second word (TDES1)
 /// See datasheet table 23-3
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, uDebug)]
 #[repr(u32)]
 pub enum TDES1 {
     /// Use MAC address register 1 instead of 0

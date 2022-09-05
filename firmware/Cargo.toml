@@ -35,4 +35,5 @@ panic-never = "0.1.0"
 static_assertions = "1.1.0"
 ufmt = "0.1.0"
 modular-bitfield = "0.11.2"
-catnip = { path="../../catnip", default_features=false }
+catnip = "0.3.0"
+# catnip = { path="../../catnip", default_features=false }

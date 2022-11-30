@@ -262,7 +262,6 @@ impl Board {
             drivers::ethernet::InterFrameGap::_40,
         );
 
-
         Board {
             core_peripherals,
             power_control: sysctl.power_control,

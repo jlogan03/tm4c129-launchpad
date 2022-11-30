@@ -73,7 +73,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     pins_gpiod.pd4.into_floating_input();  // AIN7
     pins_gpiod.pd5.into_floating_input();  // AIN6
     pins_gpiod.pd6.into_floating_input();  // AIN5
-    // pins_gpiod.pd7.into_floating_input();  // AIN4 why is this pin locked?
+    // pins_gpiod.pd7.unlock(&mut pins_gpiod.control).into_floating_input();  // AIN4 bricks board if unlocked
 
     let mut pins_gpiob = board.GPIO_PORTB_AHB.split(&board.power_control);
     pins_gpiob.pb4.into_floating_input();  // AIN10

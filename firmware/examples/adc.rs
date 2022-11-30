@@ -55,12 +55,35 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     //        read value (ADCSSFIFO0)
     //    clear fifo overflow status (ADCOSTAT) by writing 1
 
-    // set GPIOE pin modes
+    // set GPIO pin modes
     let mut pins_gpioe = board.GPIO_PORTE_AHB.split(&board.power_control);
-    pins_gpioe.pe0.into_floating_input();
-    pins_gpioe.pe1.into_floating_input();
-    pins_gpioe.pe2.into_floating_input();
-    pins_gpioe.pe3.into_floating_input();
+    pins_gpioe.pe0.into_floating_input();  // AIN3
+    pins_gpioe.pe1.into_floating_input();  // AIN2
+    pins_gpioe.pe2.into_floating_input();  // AIN1
+    pins_gpioe.pe3.into_floating_input();  // AIN0
+
+    pins_gpioe.pe4.into_floating_input();  // AIN8
+    pins_gpioe.pe5.into_floating_input();  // AIN9
+
+    let mut pins_gpiod = board.GPIO_PORTD_AHB.split(&board.power_control);
+    pins_gpiod.pd0.into_floating_input();  // AIN15
+    pins_gpiod.pd1.into_floating_input();  // AIN14
+    pins_gpiod.pd2.into_floating_input();  // AIN13
+    pins_gpiod.pd3.into_floating_input();  // AIN12
+    pins_gpiod.pd4.into_floating_input();  // AIN7
+    pins_gpiod.pd5.into_floating_input();  // AIN6
+    pins_gpiod.pd6.into_floating_input();  // AIN5
+    // pins_gpiod.pd7.into_floating_input();  // AIN4 why is this pin locked?
+
+    let mut pins_gpiob = board.GPIO_PORTB_AHB.split(&board.power_control);
+    pins_gpiob.pb4.into_floating_input();  // AIN10
+    pins_gpiob.pb5.into_floating_input();  // AIN11
+
+    let mut pins_gpiok = board.GPIO_PORTK.split(&board.power_control);
+    pins_gpiok.pk0.into_floating_input();  // AIN16
+    pins_gpiok.pk1.into_floating_input();  // AIN17
+    pins_gpiok.pk2.into_floating_input();  // AIN18
+    pins_gpiok.pk3.into_floating_input();  // AIN19
 
     // power on
     control_power(&board.power_control, Domain::Adc0, RunMode::Run, PowerState::On);

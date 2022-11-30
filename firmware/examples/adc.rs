@@ -21,7 +21,6 @@ use tm4c129x_hal::sysctl::{
     PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
 };
 
-use tm4c129x_hal::gpio::AF1;
 
 #[no_mangle]
 pub fn stellaris_main(mut board: board::Board) -> ! {
@@ -58,10 +57,10 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
     // set GPIOE pin modes
     let mut pins_gpioe = board.GPIO_PORTE_AHB.split(&board.power_control);
-    pins_gpioe.pe0.into_af_pull_down::<AF1>(&mut pins_gpioe.control);
-    pins_gpioe.pe1.into_af_pull_down::<AF1>(&mut pins_gpioe.control);
-    pins_gpioe.pe2.into_af_pull_down::<AF1>(&mut pins_gpioe.control);
-    pins_gpioe.pe3.into_af_pull_down::<AF1>(&mut pins_gpioe.control);
+    pins_gpioe.pe0.into_floating_input();
+    pins_gpioe.pe1.into_floating_input();
+    pins_gpioe.pe2.into_floating_input();
+    pins_gpioe.pe3.into_floating_input();
 
     // power on
     control_power(&board.power_control, Domain::Adc0, RunMode::Run, PowerState::On);

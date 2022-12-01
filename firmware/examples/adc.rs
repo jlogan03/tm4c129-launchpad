@@ -237,12 +237,66 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         // Set global sync to start sample all sequences
         &board.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
 
-        // Wait until the fifos are full
+        // Wait until all 3 fifos are full
         while !board.ADC0.ssfstat0.read().full().bit_is_set()
             | !board.ADC0.ssfstat1.read().full().bit_is_set()
             | !board.ADC0.ssfstat2.read().full().bit_is_set()
         {
             // do nothing
+        }
+
+        // Read all 16 values we've sampled so far
+        let mut adcvals = [0_u16; 20]; // there are 20 total, but we're only reading a few for now
+        for i in 0..8_usize {
+            adcvals[i] = *(&board.ADC0.ssfifo0.read().data().bits());
+        }
+        for i in 8..12_usize {
+            adcvals[i] = *(&board.ADC0.ssfifo1.read().data().bits());
+        }
+        for i in 12..16_usize {
+            adcvals[i] = *(&board.ADC0.ssfifo2.read().data().bits());
+        }
+
+        {
+            // Sample sequencer 1
+            // Select second ADC bank (inputs 16..20)
+            &board.ADC0.ssemux1.write(|w| w.emux0().set_bit().emux1().set_bit().emux2().set_bit().emux3().set_bit());
+
+            // Select inputs 16-19
+            unsafe {
+                &board.ADC0.ssmux1.write(|w| {
+                    w.mux0()
+                        .bits(16)
+                        .mux1()
+                        .bits(17)
+                        .mux2()
+                        .bits(18)
+                        .mux3()
+                        .bits(19)
+                });
+            }
+
+            // Set 4th sample as end of sequence
+            &board.ADC0.ssctl1.write(|w| w.end3().set_bit());
+
+            // Start sample sequencer that will capture samples
+            &board.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
+        }
+
+        // Clear flag for syncing sequencers
+        &board.ADC0.pssi.write(|w| w.syncwait().clear_bit()); // indicate we should wait for gsync to start samples
+        // Raise sync flag to make sure sequencer starts sampling
+        &board.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
+
+        // Wait until SS1 fifo is full
+        while !board.ADC0.ssfstat1.read().full().bit_is_set()
+        {
+            // do nothing
+        }
+
+        // Pull the last 4 samples from SS1
+        for i in 16..20_usize {
+            adcvals[i] = *(&board.ADC0.ssfifo1.read().data().bits());
         }
 
         writeln!(
@@ -252,7 +306,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         );
         writeln!(
             uart,
-            "init still set? {:?}",
+            "init 1 still set? {:?}",
             &board.ADC0.pssi.read().ss1().bit_is_set()
         );
         writeln!(
@@ -267,34 +321,22 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         );
         writeln!(
             uart,
-            "fifo empty? {:?}",
+            "fifo 1 empty? {:?}",
             &board.ADC0.ssfstat1.read().empty().bit_is_set()
         );
         writeln!(
             uart,
-            "fifo overflow? {:?}",
+            "fifo 1 overflow? {:?}",
             &board.ADC0.ostat.read().ov1().bit_is_set()
         );
         writeln!(
             uart,
-            "fifo underflow? {:?}",
+            "fifo 1 underflow? {:?}",
             &board.ADC0.ustat.read().uv1().bit_is_set()
         );
 
-        // clear underflow
-        board.ADC0.ustat.write(|w| w.uv1().set_bit());
-
-        // Read all 8 values
-        let mut adcvals = [0_u16; 20]; // there are 20 total, but we're only reading a few for now
-        for i in 0..8_usize {
-            adcvals[i] = *(&board.ADC0.ssfifo0.read().data().bits());
-        }
-        for i in 9..12_usize {
-            adcvals[i] = *(&board.ADC0.ssfifo1.read().data().bits());
-        }
-        for i in 12..16_usize {
-            adcvals[i] = *(&board.ADC0.ssfifo2.read().data().bits());
-        }
+        &board.ADC0.ustat.write(|w| w.uv0().set_bit().uv1().set_bit().uv2().set_bit());
+        &board.ADC0.ostat.write(|w| w.ov0().set_bit().ov1().set_bit().ov2().set_bit());
 
         // Spam serial
         // writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
@@ -303,7 +345,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         //     writeln!(uart, "byte read {}", ch).unwrap_or_default();
         // }
 
-        for i in 0..16_usize {
+        for i in 0..20_usize {
             let val = adcvals[i];
             writeln!(uart, "Channel {i}: {val}").unwrap_or_default();
         }

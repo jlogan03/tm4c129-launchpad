@@ -1,26 +1,43 @@
 //! Example drivers for the analog-to-digital converter module
 
-use tm4c129x_hal::sysctl::{control_power, PowerControl};
+use tm4c129x_hal::sysctl::{control_power, PowerControl, RunMode, PowerState, Domain};
 use tm4c129x_hal::tm4c129x::{ADC0, GPIO_PORTB_AHB, GPIO_PORTD_AHB, GPIO_PORTE_AHB, GPIO_PORTK};
 
-struct ADC {
-    registers: ADC0,
-    _gpio_portb: GPIO_PORTB_AHB,
-    _gpio_portd: GPIO_PORTD_AHB,
-    _gpio_porte: GPIO_PORTE_AHB,
-    _gpio_portk: GPIO_PORTK,
+use embedded_hal::digital::v2::*; // GPIO set high/low
+use tm4c129x_hal::gpio::{AlternateFunction, AlternateFunctionChoice, GpioExt};
+
+
+/// Number of samples to take and average in hardware
+/// per sample delivered to the FIFO
+#[allow(missing_docs)]
+#[repr(u8)]
+pub enum OverSampleMultiplier {
+    _1x,
+    _2x,
+    _4x,
+    _8x,
+    _16x,
+    _32x,
+    _64x,
+}
+
+
+/// Configuration and sampling of ADC peripheral
+pub struct ADC {
+    ADC0: ADC0,
 }
 
 impl ADC {
-    fn new(
-        adc_registers: ADC0,
+
+    /// Power-on and configure ADC peripheral
+    pub fn new(
+        ADC0: ADC0,
         gpiob: GPIO_PORTB_AHB,
         gpioe: GPIO_PORTE_AHB,
         gpiod: GPIO_PORTD_AHB,
         gpiok: GPIO_PORTK,
         power_control: &PowerControl,
         oversample_multiplier: OverSampleMultiplier,
-        sample_hold_multiplier: SampleHoldMultiplier,
         use_external_vref: bool
     ) -> Self {
         //
@@ -68,81 +85,33 @@ impl ADC {
         //
         // Leave vref source as internal (default)
         if use_external_vref {
-            adc_registers.ctl.write(|w| w.vref().clear_bit());
+            ADC0.ctl.write(|w| w.vref().clear_bit());
         }
         else {
-            adc_registers.ctl.write(|w| w.vref().set_bit());
+            ADC0.ctl.write(|w| w.vref().set_bit());
         }
        
         // Set hardware oversample-and-average multiplier
         {
             use OverSampleMultiplier::*;
             match oversample_multiplier {
-                _1x => adc_registers.sac.write(|w| w.avg().off()),
-                _2x => adc_registers.sac.write(|w| w.avg()._2x()),
-                _4x => adc_registers.sac.write(|w| w.avg()._4x()),
-                _8x => adc_registers.sac.write(|w| w.avg()._8x()),
-                _16x => adc_registers.sac.write(|w| w.avg()._16x()),
-                _32x => adc_registers.sac.write(|w| w.avg()._32x()),
-                _64x => adc_registers.sac.write(|w| w.avg()._64x()),
-            }
-        }
-        // Set sample hold time multiplier
-        {
-        use SampleHoldMultiplier::*;
-            match sample_hold_multiplier {
-                _4x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._4().tsh1()._4().tsh2()._4().tsh3()._4().tsh4()._4().tsh5()._4().tsh0()._4().tsh7()._4());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._4().tsh1()._4().tsh2()._4().tsh3()._4());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._4().tsh1()._4().tsh2()._4().tsh3()._4());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._4());
-                },
-                _8x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._8().tsh1()._8().tsh2()._8().tsh3()._8().tsh4()._8().tsh5()._8().tsh0()._8().tsh7()._8());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._8().tsh1()._8().tsh2()._8().tsh3()._8());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._8().tsh1()._8().tsh2()._8().tsh3()._8());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._8());
-                },
-                _16x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._16().tsh1()._16().tsh2()._16().tsh3()._16().tsh4()._16().tsh5()._16().tsh0()._16().tsh7()._16());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._16().tsh1()._16().tsh2()._16().tsh3()._16());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._16().tsh1()._16().tsh2()._16().tsh3()._16());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._16());
-                },
-                _32x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._32().tsh1()._32().tsh2()._32().tsh3()._32().tsh4()._32().tsh5()._32().tsh0()._32().tsh7()._32());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._32().tsh1()._32().tsh2()._32().tsh3()._32());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._32().tsh1()._32().tsh2()._32().tsh3()._32());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._32());
-                },
-                _64x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._64().tsh1()._64().tsh2()._64().tsh3()._64().tsh4()._64().tsh5()._64().tsh0()._64().tsh7()._64());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._64().tsh1()._64().tsh2()._64().tsh3()._64());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._64().tsh1()._64().tsh2()._64().tsh3()._64());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._64());
-                },
-                _128x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._128().tsh1()._128().tsh2()._128().tsh3()._128().tsh4()._128().tsh5()._128().tsh0()._128().tsh7()._128());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._128().tsh1()._128().tsh2()._128().tsh3()._128());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._128().tsh1()._128().tsh2()._128().tsh3()._128());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._128());
-                },
-                _256x => {
-                    adc_registers.sstsh0.write(|w| w.tsh0()._256().tsh1()._256().tsh2()._256().tsh3()._256().tsh4()._256().tsh5()._256().tsh0()._256().tsh7()._256());
-                    adc_registers.sstsh1.write(|w| w.tsh0()._256().tsh1()._256().tsh2()._256().tsh3()._256());
-                    adc_registers.sstsh2.write(|w| w.tsh0()._256().tsh1()._256().tsh2()._256().tsh3()._256());
-                    adc_registers.sstsh3.write(|w| w.tsh0()._256());
-                },
+                _1x => ADC0.sac.write(|w| w.avg().off()),
+                _2x => ADC0.sac.write(|w| w.avg()._2x()),
+                _4x => ADC0.sac.write(|w| w.avg()._4x()),
+                _8x => ADC0.sac.write(|w| w.avg()._8x()),
+                _16x => ADC0.sac.write(|w| w.avg()._16x()),
+                _32x => ADC0.sac.write(|w| w.avg()._32x()),
+                _64x => ADC0.sac.write(|w| w.avg()._64x()),
             }
         }
 
         // Use main oscillator as ADC clock
-        adc_registers.cc.write(|w| w.cs().mosc());
+        ADC0.cc.write(|w| w.cs().mosc());
 
         //
         // 4. Enable DMA then ADC
         //
-        adc_registers.actss.write(|w| {
+        ADC0.actss.write(|w| {
             w.aden0()
                 .set_bit()
                 .aden1()
@@ -152,7 +121,7 @@ impl ADC {
                 .aden3()
                 .set_bit()
         }); // Must be enabled before adc or it will crash with no error
-        adc_registers.actss.write(|w| {
+        ADC0.actss.write(|w| {
             w.asen0()
                 .set_bit()
                 .asen1()
@@ -164,38 +133,184 @@ impl ADC {
         }); // Must be configured before enabling or it will crash with no error
 
         Self {
-            registers: adc_registers,
-            _gpio_portb: gpiob,
-            _gpio_portd: gpiod,
-            _gpio_porte: gpioe,
-            _gpio_portk: gpiok,
+            ADC0: ADC0,
         }
     }
-}
 
+    /// Read all 20 ADC channels
+    pub fn sample(&mut self) -> [u16; 20] {   
+        //    set bank mux (ADCSSEMUX0)
+        //    set sample mux (ADCSSMUX0)
+        //    start sample (ADCPSSI)
+        //    start conversion (automatic??)
+        //    wait for sample (not ADCSSFSTAT0.EMPTY)
+        //    while not ADCSSFSTAT0.EMPTY
+        //        read value (ADCSSFIFO0)
+        //    clear fifo overflow status (ADCOSTAT) by writing 1
 
-//! Number of samples to take and average in hardware
-//! per sample delivered to the FIFO
-#[repr(u8)]
-pub enum OverSampleMultiplier {
-    _1x,
-    _2x,
-    _4x,
-    _8x,
-    _16x,
-    _32x,
-    _64x,
-}
+        // Set flag that ADC sample sequencers should wait for gsync flag
+        &self.ADC0.pssi.write(|w| w.syncwait().set_bit()); // indicate we should wait for gsync to start samples
 
+        {
+            // Sample sequencer 0
+            // Select first ADC bank (inputs 0..=15)
+            &self.ADC0.ssemux0.write_with_zero(|w| w);
 
-//! Number of ADC clock beats to hold each sample
-#[repr(u8)]
-pub enum SampleHoldMultiplier {
-    _4x,
-    _8x,
-    _16x,
-    _32x,
-    _64x,
-    _128x,
-    _256x
+            // Select inputs 0-7
+            unsafe {
+                &self.ADC0.ssmux0.write(|w| {
+                    w.mux0()
+                        .bits(0)
+                        .mux1()
+                        .bits(1)
+                        .mux2()
+                        .bits(2)
+                        .mux3()
+                        .bits(3)
+                        .mux4()
+                        .bits(4)
+                        .mux5()
+                        .bits(5)
+                        .mux6()
+                        .bits(6)
+                        .mux7()
+                        .bits(7)
+                });
+            }
+
+            // Set 4th sample as end of sequence
+            &self.ADC0.ssctl0.write(|w| w.end7().set_bit());
+
+            // Start sample sequencer that will capture samples
+            &self.ADC0.pssi.write(|w| w.ss0().set_bit()); // sequencer init
+        }
+
+        {
+            // Sample sequencer 1
+            // Select first ADC bank (inputs 0..=15)
+            &self.ADC0.ssemux1.write_with_zero(|w| w);
+
+            // Select inputs 8-11
+            unsafe {
+                &self.ADC0.ssmux1.write(|w| {
+                    w.mux0()
+                        .bits(8)
+                        .mux1()
+                        .bits(9)
+                        .mux2()
+                        .bits(10)
+                        .mux3()
+                        .bits(11)
+                });
+            }
+
+            // Set 4th sample as end of sequence
+            &self.ADC0.ssctl1.write(|w| w.end3().set_bit());
+
+            // Start sample sequencer that will capture samples
+            &self.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
+        }
+
+        {
+            // Sample sequencer 2
+            // Select first ADC bank (inputs 0..=15)
+            &self.ADC0.ssemux2.write_with_zero(|w| w);
+
+            // Select inputs 12-15
+            unsafe {
+                &self.ADC0.ssmux2.write(|w| {
+                    w.mux0()
+                        .bits(12)
+                        .mux1()
+                        .bits(13)
+                        .mux2()
+                        .bits(14)
+                        .mux3()
+                        .bits(15)
+                });
+            }
+
+            // Set 4th sample as end of sequence
+            &self.ADC0.ssctl2.write(|w| w.end3().set_bit());
+
+            // Start sample sequencer that will capture samples
+            &self.ADC0.pssi.write(|w| w.ss2().set_bit()); // sequencer init
+        }
+
+        // Set global sync to start sample all sequences
+        &self.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
+
+        // Wait until all 3 fifos are full
+        while !self.ADC0.ssfstat0.read().full().bit_is_set()
+            | !self.ADC0.ssfstat1.read().full().bit_is_set()
+            | !self.ADC0.ssfstat2.read().full().bit_is_set()
+        {
+            // do nothing
+        }
+
+        // Read all 16 values we've sampled so far
+        let mut adcvals = [0_u16; 20]; // there are 20 total, but we're only reading a few for now
+        for i in 0..8_usize {
+            adcvals[i] = *(&self.ADC0.ssfifo0.read().data().bits());
+        }
+        for i in 8..12_usize {
+            adcvals[i] = *(&self.ADC0.ssfifo1.read().data().bits());
+        }
+        for i in 12..16_usize {
+            adcvals[i] = *(&self.ADC0.ssfifo2.read().data().bits());
+        }
+
+        {
+            // Sample sequencer 1
+            // Select second ADC bank (inputs 16..20)
+            &self.ADC0.ssemux1.write(|w| {
+                w.emux0()
+                    .set_bit()
+                    .emux1()
+                    .set_bit()
+                    .emux2()
+                    .set_bit()
+                    .emux3()
+                    .set_bit()
+            });
+
+            // Select inputs 16-19
+            unsafe {
+                &self.ADC0.ssmux1.write(|w| {
+                    w.mux0()
+                        .bits(16)
+                        .mux1()
+                        .bits(17)
+                        .mux2()
+                        .bits(18)
+                        .mux3()
+                        .bits(19)
+                });
+            }
+
+            // Set 4th sample as end of sequence
+            &self.ADC0.ssctl1.write(|w| w.end3().set_bit());
+
+            // Start sample sequencer that will capture samples
+            &self.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
+        }
+
+        // Clear flag for syncing sequencers
+        &self.ADC0.pssi.write(|w| w.syncwait().clear_bit()); // indicate we should wait for gsync to start samples
+                                                              // Raise sync flag to make sure sequencer starts sampling
+        &self.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
+
+        // Wait until SS1 fifo is full
+        while !self.ADC0.ssfstat1.read().full().bit_is_set() {
+            // do nothing
+        }
+
+        // Pull the last 4 samples from SS1
+        for i in 16..20_usize {
+            adcvals[i] = *(&self.ADC0.ssfifo1.read().data().bits());
+        }
+
+        adcvals
+    }
+
 }

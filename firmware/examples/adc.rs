@@ -57,13 +57,6 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
 
         let adcvals: [u16; 20] = adc.sample();
 
-        // Spam serial
-        // writeln!(uart, "Hello, world! Loops = {}", loops).unwrap_or_default();
-        // while let Ok(ch) = uart.read() {
-        //     // Echo
-        //     writeln!(uart, "byte read {}", ch).unwrap_or_default();
-        // }
-
         for i in 0..20_usize {
             let val = adcvals[i];
             writeln!(uart, "Channel {i}: {val}").unwrap_or_default();

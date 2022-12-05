@@ -1,4 +1,4 @@
-//! A blinky-LED example application
+//! A blinky-LED example application that uses the SysTick interrupt for static scheduling
 
 #![no_std]
 #![no_main]
@@ -40,8 +40,10 @@ pub fn stellaris_main(mut board: Board) -> ! {
 
     // Set up systick as static scheduling interrupt
     //    Set tick timing
-    let us = 100; // How many us per tick?
-    let mut reload = us * (clocks().sysclk.0 / 1_000_000) + 1;  // Interrupt after this many clock cycles
+    let us_per_interrupt = 1000; // [us] How many us per interrupt?
+    let clock_cycles_per_us = clocks().sysclk.0 / 1_000_000; // [cycles]
+    let mut reload = us_per_interrupt * clock_cycles_per_us + 1; //  [cycles/interrupt] Interrupt after this many clock cycles
+
     //    Enable SysTick interrupt
     board.core_peripherals.SYST.set_reload(reload);
     board.core_peripherals.SYST.clear_current();
@@ -55,18 +57,21 @@ pub fn stellaris_main(mut board: Board) -> ! {
     )
     .unwrap_or_default();
 
-    let mut ticks: u64 = 0;
+    let mut interrupt_count: u64 = 0;
     let mut loops: u8 = 0;
 
     handler!(
         systick_handler = || {
-            ticks = ticks.wrapping_add(1);
+            interrupt_count = interrupt_count.wrapping_add(1);
 
-            if ticks % 100 == 0 {  // Cycle LEDs once every hundred systicks
+            if interrupt_count % 100 == 0 {
+                // Cycle LEDs once every hundred systicks
                 loops = loops.wrapping_add(1);
 
                 // Spam serial
-                writeln!(uart, "Hello, world! Ticks = {}; Loops = {}", ticks, loops).unwrap_or_default();
+                let time_ms = (us_per_interrupt as u64) * interrupt_count / 1000;
+                writeln!(uart, "Hello, world! Interrupt Count = {}; Time = {} [ms]", interrupt_count, time_ms)
+                    .unwrap_or_default();
                 while let Ok(ch) = uart.read() {
                     // Echo
                     writeln!(uart, "byte read {}", ch).unwrap_or_default();

@@ -187,6 +187,7 @@ pub struct Board {
 }
 
 /// Clock speed defaults
+/// These are overridden with as-configured values during sysctl.clock_setup.freeze()
 static mut CLOCKS: Clocks = Clocks {
     osc: Hertz(25_000_000),
     sysclk: Hertz(120_000_000),

@@ -7,6 +7,7 @@ extern crate embedded_hal;
 extern crate tm4c129_launchpad;
 extern crate tm4c129x_hal;
 
+use cortex_m::peripheral::syst::SystClkSource;
 use cortex_m_rt::{exception, ExceptionFrame};
 use static_assertions::const_assert;
 
@@ -45,7 +46,8 @@ pub fn stellaris_main(mut board: Board) -> ! {
     let mut reload = us_per_interrupt * clock_cycles_per_us + 1; //  [cycles/interrupt] Interrupt after this many clock cycles
 
     //    Enable SysTick interrupt
-    board.core_peripherals.SYST.set_reload(reload);
+    board.core_peripherals.SYST.set_reload(120_000_000 / 1000);
+    board.core_peripherals.SYST.set_clock_source(SystClkSource::Core);  // Use sysclk
     board.core_peripherals.SYST.clear_current();
     board.core_peripherals.SYST.enable_counter();
     board.core_peripherals.SYST.enable_interrupt();

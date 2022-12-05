@@ -3,8 +3,10 @@
 use cortex_m;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 
-use super::board;
+use super::board::{clocks, safe, Board};
 use tm4c129x_hal::{gpio::GpioExt, serial, sysctl::SysctlExt, time::Bps};
+
+use irq::{handler, scope, scoped_interrupts};
 
 #[cfg(debug_assertions)]
 use core::fmt::Write;
@@ -12,7 +14,7 @@ use core::fmt::Write;
 // This function must be implemented by the application that uses the crate
 // and is the entry-point for that application after board initialization
 extern "Rust" {
-    fn stellaris_main(board: board::Board);
+    fn stellaris_main(board: Board);
 }
 
 /// Performs what you might otherwise call 'C Startup'.
@@ -22,13 +24,25 @@ extern "Rust" {
 /// zeros the bss segment.
 #[entry]
 unsafe fn call_main() -> ! {
-    let board = board::Board::new();
-    stellaris_main(board);
+    // Initialize runtime-defined exception handlers before running any
+    // application code or doing anything that might trigger them
+    handler!(systick_default_handler = || {});
+    handler!(pendsv_default_handler = || {});
+    handler!(svcall_default_handler = || {});
+
+    scope(|default| {
+        default.register(Interrupt::SysTick, systick_default_handler);
+        default.register(Interrupt::PendSV, pendsv_default_handler);
+        default.register(Interrupt::SVCall, svcall_default_handler);
+
+        let board = Board::new();
+        stellaris_main(board);
+    });
+
     loop {
         cortex_m::asm::wfi();
     }
 }
-
 
 /// A HardFault is an exception that occurs because of an error during
 /// exception processing, or because an exception cannot be managed by any
@@ -50,7 +64,7 @@ unsafe fn HardFault(_sf: &ExceptionFrame) -> ! {
         (),
         Bps(115200),
         serial::NewlineMode::SwapLFtoCRLF,
-        board::clocks(),
+        clocks(),
         &sysctl.power_control,
     );
 
@@ -58,7 +72,7 @@ unsafe fn HardFault(_sf: &ExceptionFrame) -> ! {
     #[cfg(debug_assertions)]
     writeln!(uart, "SF: {:?}", _sf).unwrap_or_default();
 
-    board::safe();
+    safe();
 }
 
 /// A Non Maskable Interrupt (NMI) can be signalled by a peripheral or
@@ -69,7 +83,7 @@ unsafe fn HardFault(_sf: &ExceptionFrame) -> ! {
 /// * preempted by any exception other than Reset.
 #[exception]
 unsafe fn NonMaskableInt() {
-    // Do nothing
+    safe();
 }
 
 /// A MemManage fault is an exception that occurs because of a memory
@@ -79,7 +93,7 @@ unsafe fn NonMaskableInt() {
 /// (XN) memory regions.
 #[exception]
 fn MemoryManagement() {
-    board::safe();
+    safe();
 }
 
 /// A BusFault is an exception that occurs because of a memory related fault
@@ -87,7 +101,7 @@ fn MemoryManagement() {
 /// detected on a bus in the memory system.
 #[exception]
 fn BusFault() {
-    board::safe();
+    safe();
 }
 
 /// A UsageFault is an exception that occurs because of a fault related to instruction execution. This includes:
@@ -100,15 +114,7 @@ fn BusFault() {
 /// * division by zero.
 #[exception]
 fn UsageFault() {
-    board::safe();
-}
-
-/// A supervisor call (SVC) is an exception that is triggered by the SVC
-/// instruction. In an OS environment, applications can use SVC instructions
-/// to access OS kernel functions and device drivers.
-#[exception]
-fn SVCall() {
-    // Nothing
+    safe();
 }
 
 /// Debug monitor interrupt handler.
@@ -117,24 +123,36 @@ fn DebugMonitor() {
     // Nothing
 }
 
-/// PendSV is an interrupt-driven request for system-level service. In an OS
-/// environment, use PendSV for context switching when no other exception is
-/// active.
-#[exception]
-fn PendSV() {
-    // Nothing
-}
-
-/// A SysTick exception is an exception the system timer generates when it
-/// reaches zero. Software can also generate a SysTick exception. In an OS
-/// environment, the processor can use this exception as system tick.
-#[exception]
-fn SysTick() {
-    // Nothing
-}
-
 /// A place-holder ISR used when we have nothing better to use.
 #[exception]
 unsafe fn DefaultHandler(_irq_number: i16) -> () {
-    board::safe();
+    // Nothing
+}
+
+scoped_interrupts! {
+    /// Exception interrupts that can be overridden by the user at runtime
+    ///
+    /// A SysTick exception is an exception the system timer generates when it
+    /// reaches zero. Software can also generate a SysTick exception. In an OS
+    /// environment, the processor can use this exception as system tick.
+    ///
+    /// A supervisor call (SVC) is an exception that is triggered by the SVC
+    /// instruction. In an OS environment, applications can use SVC instructions
+    /// to access OS kernel functions and device drivers.
+    ///
+    /// PendSV is an interrupt-driven request for system-level service. In an OS
+    /// environment, use PendSV for context switching when no other exception is
+    /// active.
+    ///
+    /// We're using the exception interface instead of the interrupt interface here
+    /// because the tm4c hal doesn't have the cortex-m-rt interrupt definitions,
+    /// which are normally autogenerated by svd2rust
+    #[allow(missing_docs)]
+    pub enum Interrupt {
+        SysTick,
+        SVCall,
+        PendSV
+    }
+
+    use #[exception];
 }

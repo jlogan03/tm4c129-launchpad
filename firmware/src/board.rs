@@ -187,6 +187,7 @@ pub struct Board {
 }
 
 /// Clock speed defaults
+/// These are overridden with as-configured values during sysctl.clock_setup.freeze()
 static mut CLOCKS: Clocks = Clocks {
     osc: Hertz(25_000_000),
     sysclk: Hertz(120_000_000),
@@ -365,7 +366,7 @@ pub fn safe() -> ! {
     let pins = p.GPIO_PORTF_AHB.split(&p.SYSCTL.constrain().power_control);
 
     let mut delay = tm4c129x_hal::delay::Delay::new(core_peripherals.SYST, unsafe { &CLOCKS });
-    let mut led0 = pins.pf1.into_push_pull_output();
+    let mut led0 = pins.pf0.into_push_pull_output();
     loop {
         let _ = led0.set_high().unwrap_or_default();
         delay.delay_ms(200u32);

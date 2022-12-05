@@ -1,11 +1,9 @@
 //! Example drivers for the analog-to-digital converter module
 
-use tm4c129x_hal::sysctl::{control_power, PowerControl, RunMode, PowerState, Domain};
+use tm4c129x_hal::sysctl::{control_power, Domain, PowerControl, PowerState, RunMode};
 use tm4c129x_hal::tm4c129x::{ADC0, GPIO_PORTB_AHB, GPIO_PORTD_AHB, GPIO_PORTE_AHB, GPIO_PORTK};
 
-use embedded_hal::digital::v2::*; // GPIO set high/low
-use tm4c129x_hal::gpio::{AlternateFunction, AlternateFunctionChoice, GpioExt};
-
+use tm4c129x_hal::gpio::GpioExt;
 
 /// Number of samples to take and average in hardware
 /// per sample delivered to the FIFO
@@ -21,15 +19,15 @@ pub enum OverSampleMultiplier {
     _64x,
 }
 
-
 /// Configuration and sampling of ADC peripheral
+#[allow(non_snake_case)]
 pub struct ADC {
     ADC0: ADC0,
 }
 
 impl ADC {
-
     /// Power-on and configure ADC peripheral
+    #[allow(non_snake_case)]
     pub fn new(
         ADC0: ADC0,
         gpiob: GPIO_PORTB_AHB,
@@ -38,12 +36,12 @@ impl ADC {
         gpiok: GPIO_PORTK,
         power_control: &PowerControl,
         oversample_multiplier: OverSampleMultiplier,
-        use_external_vref: bool
+        use_external_vref: bool,
     ) -> Self {
         //
         // 1. Set pin modes for all 20 ADC inputs
         //
-        let mut pins_gpioe = gpioe.split(&power_control);
+        let pins_gpioe = gpioe.split(&power_control);
         pins_gpioe.pe0.into_floating_input(); // AIN3
         pins_gpioe.pe1.into_floating_input(); // AIN2
         pins_gpioe.pe2.into_floating_input(); // AIN1
@@ -65,11 +63,11 @@ impl ADC {
             .unlock(&mut pins_gpiod.control)
             .into_floating_input(); // AIN4. not sure why it's locked
 
-        let mut pins_gpiob = gpiob.split(&power_control);
+        let pins_gpiob = gpiob.split(&power_control);
         pins_gpiob.pb4.into_floating_input(); // AIN10
         pins_gpiob.pb5.into_floating_input(); // AIN11
 
-        let mut pins_gpiok = gpiok.split(&power_control);
+        let pins_gpiok = gpiok.split(&power_control);
         pins_gpiok.pk0.into_floating_input(); // AIN16
         pins_gpiok.pk1.into_floating_input(); // AIN17
         pins_gpiok.pk2.into_floating_input(); // AIN18
@@ -86,11 +84,10 @@ impl ADC {
         // Leave vref source as internal (default)
         if use_external_vref {
             ADC0.ctl.write(|w| w.vref().clear_bit());
-        }
-        else {
+        } else {
             ADC0.ctl.write(|w| w.vref().set_bit());
         }
-       
+
         // Set hardware oversample-and-average multiplier
         {
             use OverSampleMultiplier::*;
@@ -132,13 +129,11 @@ impl ADC {
                 .set_bit()
         }); // Must be configured before enabling or it will crash with no error
 
-        Self {
-            ADC0: ADC0,
-        }
+        Self { ADC0: ADC0 }
     }
 
     /// Read all 20 ADC channels
-    pub fn sample(&mut self) -> [u16; 20] {   
+    pub fn sample(&mut self) -> [u16; 20] {
         //    set bank mux (ADCSSEMUX0)
         //    set sample mux (ADCSSMUX0)
         //    start sample (ADCPSSI)
@@ -149,50 +144,48 @@ impl ADC {
         //    clear fifo overflow status (ADCOSTAT) by writing 1
 
         // Set flag that ADC sample sequencers should wait for gsync flag
-        &self.ADC0.pssi.write(|w| w.syncwait().set_bit()); // indicate we should wait for gsync to start samples
+        let _ = &self.ADC0.pssi.write(|w| w.syncwait().set_bit()); // indicate we should wait for gsync to start samples
 
         {
             // Sample sequencer 0
             // Select first ADC bank (inputs 0..=15)
-            &self.ADC0.ssemux0.write_with_zero(|w| w);
+            let _ = &self.ADC0.ssemux0.write_with_zero(|w| w);
 
             // Select inputs 0-7
-            unsafe {
-                &self.ADC0.ssmux0.write(|w| {
-                    w.mux0()
-                        .bits(0)
-                        .mux1()
-                        .bits(1)
-                        .mux2()
-                        .bits(2)
-                        .mux3()
-                        .bits(3)
-                        .mux4()
-                        .bits(4)
-                        .mux5()
-                        .bits(5)
-                        .mux6()
-                        .bits(6)
-                        .mux7()
-                        .bits(7)
-                });
-            }
+            let _ = &self.ADC0.ssmux0.write(|w| {
+                w.mux0()
+                    .bits(0)
+                    .mux1()
+                    .bits(1)
+                    .mux2()
+                    .bits(2)
+                    .mux3()
+                    .bits(3)
+                    .mux4()
+                    .bits(4)
+                    .mux5()
+                    .bits(5)
+                    .mux6()
+                    .bits(6)
+                    .mux7()
+                    .bits(7)
+            });
 
             // Set 4th sample as end of sequence
-            &self.ADC0.ssctl0.write(|w| w.end7().set_bit());
+            let _ = &self.ADC0.ssctl0.write(|w| w.end7().set_bit());
 
             // Start sample sequencer that will capture samples
-            &self.ADC0.pssi.write(|w| w.ss0().set_bit()); // sequencer init
+            let _ = &self.ADC0.pssi.write(|w| w.ss0().set_bit()); // sequencer init
         }
 
         {
             // Sample sequencer 1
             // Select first ADC bank (inputs 0..=15)
-            &self.ADC0.ssemux1.write_with_zero(|w| w);
+            let _ = &self.ADC0.ssemux1.write_with_zero(|w| w);
 
             // Select inputs 8-11
             unsafe {
-                &self.ADC0.ssmux1.write(|w| {
+                let _ = &self.ADC0.ssmux1.write(|w| {
                     w.mux0()
                         .bits(8)
                         .mux1()
@@ -205,20 +198,20 @@ impl ADC {
             }
 
             // Set 4th sample as end of sequence
-            &self.ADC0.ssctl1.write(|w| w.end3().set_bit());
+            let _ = &self.ADC0.ssctl1.write(|w| w.end3().set_bit());
 
             // Start sample sequencer that will capture samples
-            &self.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
+            let _ = &self.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
         }
 
         {
             // Sample sequencer 2
             // Select first ADC bank (inputs 0..=15)
-            &self.ADC0.ssemux2.write_with_zero(|w| w);
+            let _ = &self.ADC0.ssemux2.write_with_zero(|w| w);
 
             // Select inputs 12-15
             unsafe {
-                &self.ADC0.ssmux2.write(|w| {
+                let _ = &self.ADC0.ssmux2.write(|w| {
                     w.mux0()
                         .bits(12)
                         .mux1()
@@ -231,14 +224,14 @@ impl ADC {
             }
 
             // Set 4th sample as end of sequence
-            &self.ADC0.ssctl2.write(|w| w.end3().set_bit());
+            let _ = &self.ADC0.ssctl2.write(|w| w.end3().set_bit());
 
             // Start sample sequencer that will capture samples
-            &self.ADC0.pssi.write(|w| w.ss2().set_bit()); // sequencer init
+            let _ = &self.ADC0.pssi.write(|w| w.ss2().set_bit()); // sequencer init
         }
 
         // Set global sync to start sample all sequences
-        &self.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
+        let _ = &self.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
 
         // Wait until all 3 fifos are full
         while !self.ADC0.ssfstat0.read().full().bit_is_set()
@@ -263,7 +256,7 @@ impl ADC {
         {
             // Sample sequencer 1
             // Select second ADC bank (inputs 16..20)
-            &self.ADC0.ssemux1.write(|w| {
+            let _ = &self.ADC0.ssemux1.write(|w| {
                 w.emux0()
                     .set_bit()
                     .emux1()
@@ -276,7 +269,7 @@ impl ADC {
 
             // Select inputs 16-19
             unsafe {
-                &self.ADC0.ssmux1.write(|w| {
+                let _ = &self.ADC0.ssmux1.write(|w| {
                     w.mux0()
                         .bits(16)
                         .mux1()
@@ -289,16 +282,17 @@ impl ADC {
             }
 
             // Set 4th sample as end of sequence
-            &self.ADC0.ssctl1.write(|w| w.end3().set_bit());
+            let _ = &self.ADC0.ssctl1.write(|w| w.end3().set_bit());
 
             // Start sample sequencer that will capture samples
-            &self.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
+            let _ = &self.ADC0.pssi.write(|w| w.ss1().set_bit()); // sequencer init
         }
 
         // Clear flag for syncing sequencers
-        &self.ADC0.pssi.write(|w| w.syncwait().clear_bit()); // indicate we should wait for gsync to start samples
-                                                              // Raise sync flag to make sure sequencer starts sampling
-        &self.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
+        let _ = &self.ADC0.pssi.write(|w| w.syncwait().clear_bit()); // indicate we should wait for gsync to start samples
+
+        // Raise sync flag to make sure sequencer starts sampling
+        let _ = &self.ADC0.pssi.write(|w| w.gsync().set_bit()); // Global sync
 
         // Wait until SS1 fifo is full
         while !self.ADC0.ssfstat1.read().full().bit_is_set() {
@@ -312,5 +306,4 @@ impl ADC {
 
         adcvals
     }
-
 }

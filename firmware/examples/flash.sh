@@ -9,5 +9,7 @@ cargo build --example $1 --release  &&
 arm-none-eabi-objcopy -O binary $INFILE $OUTFILE  &&
 # Show binary size
 ls -lh $OUTFILE &&
+# Unlock just in case
+# sudo $LM4FLASH -U
 # Flash
 sudo $LM4FLASH $OUTFILE

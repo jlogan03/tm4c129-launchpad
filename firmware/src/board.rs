@@ -365,7 +365,7 @@ pub fn safe() -> ! {
     let pins = p.GPIO_PORTF_AHB.split(&p.SYSCTL.constrain().power_control);
 
     let mut delay = tm4c129x_hal::delay::Delay::new(core_peripherals.SYST, unsafe { &CLOCKS });
-    let mut led0 = pins.pf1.into_push_pull_output();
+    let mut led0 = pins.pf0.into_push_pull_output();
     loop {
         let _ = led0.set_high().unwrap_or_default();
         delay.delay_ms(200u32);

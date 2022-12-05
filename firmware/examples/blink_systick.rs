@@ -44,8 +44,8 @@ pub fn stellaris_main(mut board: Board) -> ! {
     let us_per_interrupt = 1000; // [us] How many us per interrupt?
     let clock_cycles_per_us = clocks().sysclk.0 / 1_000_000; // [cycles]
     let mut reload = us_per_interrupt * clock_cycles_per_us + 1; //  [cycles/interrupt] Interrupt after this many clock cycles
-
-    //    Enable SysTick interrupt
+    
+    //    Configure and enable SysTick interrupt
     board.core_peripherals.SYST.set_reload(120_000_000 / 1000);
     board.core_peripherals.SYST.set_clock_source(SystClkSource::Core);  // Use sysclk
     board.core_peripherals.SYST.clear_current();

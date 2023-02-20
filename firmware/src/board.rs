@@ -3,7 +3,7 @@ use embedded_hal::digital::v2::OutputPin;
 use tm4c129x_hal::gpio::{gpiof::*, gpioj::*, gpion::*, GpioExt, Input, Output, PullUp, PushPull};
 use tm4c129x_hal::sysctl::{
     control_power, reset, Clocks, CrystalFrequency, Domain, Oscillator, PllOutputFrequency,
-    PowerControl, PowerState, RunMode, SysctlExt, SystemClock,
+    PowerControl, PowerState, RunMode, SysctlExt, SystemClock, Divider,
 };
 use tm4c129x_hal::time::Hertz;
 
@@ -27,29 +27,29 @@ pub struct Board {
     /// Power gating for peripherals in the TM4C129x
     pub power_control: tm4c129x_hal::sysctl::PowerControl,
 
-    /// LED D1
-    pub led0: PN1<Output<PushPull>>,
-    /// LED D2
-    pub led1: PN0<Output<PushPull>>,
-    /// LED D3
-    pub led2: PF4<Output<PushPull>>,
-    /// LED D4
-    pub led3: PF0<Output<PushPull>>,
+    // /// LED D1
+    // pub led0: PN1<Output<PushPull>>,
+    // /// LED D2
+    // pub led1: PN0<Output<PushPull>>,
+    // /// LED D3
+    // pub led2: PF4<Output<PushPull>>,
+    // /// LED D4
+    // pub led3: PF0<Output<PushPull>>,
 
-    /// Button SW1
-    pub button0: PJ0<Input<PullUp>>,
-    /// Button SW2
-    pub button1: PJ1<Input<PullUp>>,
+    // /// Button SW1
+    // pub button0: PJ0<Input<PullUp>>,
+    // /// Button SW2
+    // pub button1: PJ1<Input<PullUp>>,
 
-    /// GPIO control for GPIO port F
-    pub portf_control: tm4c129x_hal::gpio::gpiof::GpioControl,
-    /// GPIO control for GPIO port N
-    pub portn_control: tm4c129x_hal::gpio::gpion::GpioControl,
-    /// GPIO control for GPIO port J
-    pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
+    // /// GPIO control for GPIO port F
+    // pub portf_control: tm4c129x_hal::gpio::gpiof::GpioControl,
+    // /// GPIO control for GPIO port N
+    // pub portn_control: tm4c129x_hal::gpio::gpion::GpioControl,
+    // /// GPIO control for GPIO port J
+    // pub portj_control: tm4c129x_hal::gpio::gpioj::GpioControl,
 
     /// EMAC driver
-    pub enet: Ethernet,
+    // pub enet: Ethernet,
 
     #[doc = "WATCHDOG0"]
     pub WATCHDOG0: tm4c129x_hal::tm4c129x::WATCHDOG0,
@@ -66,8 +66,8 @@ pub struct Board {
     pub GPIO_PORTD_AHB: tm4c129x_hal::tm4c129x::GPIO_PORTD_AHB,
     #[doc = "GPIO_PORTE_AHB"]
     pub GPIO_PORTE_AHB: tm4c129x_hal::tm4c129x::GPIO_PORTE_AHB,
-    // #[doc = "GPIO_PORTF_AHB"]
-    // pub GPIO_PORTF_AHB: tm4c129x_hal::tm4c129x::GPIO_PORTF_AHB,
+    #[doc = "GPIO_PORTF_AHB"]
+    pub GPIO_PORTF_AHB: tm4c129x_hal::tm4c129x::GPIO_PORTF_AHB,
     #[doc = "GPIO_PORTG_AHB"]
     pub GPIO_PORTG_AHB: tm4c129x_hal::tm4c129x::GPIO_PORTG_AHB,
     #[doc = "GPIO_PORTH_AHB"]
@@ -189,8 +189,8 @@ pub struct Board {
 /// Clock speed defaults
 /// These are overridden with as-configured values during sysctl.clock_setup.freeze()
 static mut CLOCKS: Clocks = Clocks {
-    osc: Hertz(25_000_000),
-    sysclk: Hertz(120_000_000),
+    osc: Hertz(16_000_000),
+    sysclk: Hertz(48_000_000),
 };
 
 /// Get the current clock rate of the CPU
@@ -223,64 +223,65 @@ impl Board {
         // Clocks
         let system_clk_freq = PllOutputFrequency::_120mhz;
         sysctl.clock_setup.oscillator = Oscillator::Main(
-            CrystalFrequency::_25mhz,
+            CrystalFrequency::_16mhz,
             SystemClock::UsePll(system_clk_freq),
         );
+        // sysctl.clock_setup.oscillator = Oscillator::Main(SystemClock::UsePll(system_clk_freq));
         unsafe {
             CLOCKS = sysctl.clock_setup.freeze();
         }
 
         // GPIO (LEDs and buttons)
-        let pins_gpion = peripherals.GPIO_PORTN.split(&sysctl.power_control);
-        let led1: PN0<Output<PushPull>> = pins_gpion.pn0.into_push_pull_output();
-        let led0: PN1<Output<PushPull>> = pins_gpion.pn1.into_push_pull_output();
+        // let pins_gpion = peripherals.GPIO_PORTN.split(&sysctl.power_control);
+        // let led1: PN0<Output<PushPull>> = pins_gpion.pn0.into_push_pull_output();
+        // let led0: PN1<Output<PushPull>> = pins_gpion.pn1.into_push_pull_output();
 
-        let pins_gpiof = peripherals.GPIO_PORTF_AHB.split(&sysctl.power_control);
-        let led3: PF0<Output<PushPull>> = pins_gpiof.pf0.into_push_pull_output();
-        let led2: PF4<Output<PushPull>> = pins_gpiof.pf4.into_push_pull_output();
+        // let pins_gpiof = peripherals.GPIO_PORTF_AHB.split(&sysctl.power_control);
+        // let led3: PF0<Output<PushPull>> = pins_gpiof.pf0.into_push_pull_output();
+        // let led2: PF4<Output<PushPull>> = pins_gpiof.pf4.into_push_pull_output();
 
-        let pins_gpioj = peripherals.GPIO_PORTJ_AHB.split(&sysctl.power_control);
-        let button0 = pins_gpioj.pj0.into_pull_up_input();
-        let button1 = pins_gpioj.pj1.into_pull_up_input();
+        // let pins_gpioj = peripherals.GPIO_PORTJ_AHB.split(&sysctl.power_control);
+        // let button0 = pins_gpioj.pj0.into_pull_up_input();
+        // let button1 = pins_gpioj.pj1.into_pull_up_input();
 
         // Ethernet
         // Note the portions that use the power_control lock introduce a panic branch if they are run from
         // another module, so they must be run directly here or passed as a closure until the compiler/linker
         // get better at eliminating unreachable panic branches.
         //     Power-on and enable EMAC0 and EPHY0 peripherals
-        emac_enable(&sysctl.power_control);
+        // emac_enable(&sysctl.power_control);
         //     Get MAC address from read-only memory
-        let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
+        // let src_macaddr = drivers::ethernet::get_rom_macaddr(&peripherals.FLASH_CTRL);
         //     Initialize EMAC driver
         //     The settings chosen here are a trade-off between mean latency, peak latency, and mean throughput
-        let enet: Ethernet = Ethernet::new(
-            &sysctl.power_control,
-            |pc| ephy_reset_power(pc),
-            peripherals.EMAC0,
-            system_clk_freq,
-            src_macaddr,
-            drivers::ethernet::PreambleLength::_3,
-            drivers::ethernet::InterFrameGap::_40,
-        );
+        // let enet: Ethernet = Ethernet::new(
+        //     &sysctl.power_control,
+        //     |pc| ephy_reset_power(pc),
+        //     peripherals.EMAC0,
+        //     system_clk_freq,
+        //     src_macaddr,
+        //     drivers::ethernet::PreambleLength::_3,
+        //     drivers::ethernet::InterFrameGap::_40,
+        // );
 
         Board {
             core_peripherals,
             power_control: sysctl.power_control,
 
             // --------- Board-specific ---------
-            led0,
-            led1,
-            led2,
-            led3,
+            // led0,
+            // led1,
+            // led2,
+            // led3,
 
-            button0,
-            button1,
+            // button0,
+            // button1,
 
-            portf_control: pins_gpiof.control,
-            portn_control: pins_gpion.control,
-            portj_control: pins_gpioj.control,
+            // portf_control: pins_gpiof.control,
+            // portn_control: pins_gpion.control,
+            // portj_control: pins_gpioj.control,
 
-            enet,
+            // enet,
 
             // ----------------------------------
             WATCHDOG0: peripherals.WATCHDOG0,
@@ -291,7 +292,7 @@ impl Board {
             GPIO_PORTC_AHB: peripherals.GPIO_PORTC_AHB,
             GPIO_PORTD_AHB: peripherals.GPIO_PORTD_AHB,
             GPIO_PORTE_AHB: peripherals.GPIO_PORTE_AHB,
-            // GPIO_PORTF_AHB: peripherals.GPIO_PORTF_AHB,  // Consumed (board-specific)
+            GPIO_PORTF_AHB: peripherals.GPIO_PORTF_AHB,  // Consumed (board-specific)
             GPIO_PORTG_AHB: peripherals.GPIO_PORTG_AHB,
             GPIO_PORTH_AHB: peripherals.GPIO_PORTH_AHB,
             // GPIO_PORTJ_AHB: peripherals.GPIO_PORTJ_AHB,  // Consumed (board-specific)

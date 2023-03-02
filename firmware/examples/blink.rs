@@ -58,35 +58,35 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
     );
     let mut delay = tm4c129x_hal::delay::Delay::new(board.core_peripherals.SYST, board::clocks());
 
-    let cycle_on_us: u32 = 500;
-    let cycle_off_us: u32 = 1_000;
-    let duration_us: u32 = 1_000_000;
+    let cycle_on_us: u32 = 63;
+    let cycle_off_us: u32 = 438;
+    let duration_us: u32 = 250_000;
     let cycles: u32 = duration_us / (cycle_on_us + cycle_off_us);
 
     let mut loops = 0;
     loop {
         // Spam serial
-        uart.write_all(r"Hello, world!\n");
-        // writeln!(uart, , loops).unwrap_or_default();
-        while let Ok(ch) = uart.read() {
-            // Echo
-            writeln!(uart, "byte read {}", ch).unwrap_or_default();
-        }
+        // uart.write_all(r"Hello, world!\n");
+        // // writeln!(uart, , loops).unwrap_or_default();
+        // while let Ok(ch) = uart.read() {
+        //     // Echo
+        //     writeln!(uart, "byte read {}", ch).unwrap_or_default();
+        // }
 
         loops = loops + 1;
 
-        pa3.set_high();
-        valve_channel_7.set_low();
-        valve_channel_0.set_high();
-        delay.delay_ms(1000u32);
+        // pa3.set_high();
+        // valve_channel_7.set_low();
+        // valve_channel_0.set_high();
+        // delay.delay_ms(1000u32);
 
-        pa3.set_low();
-        valve_channel_0.set_low();
-        valve_channel_1.set_high();
-        delay.delay_ms(1000u32);
+        // pa3.set_low();
+        // valve_channel_0.set_low();
+        // valve_channel_1.set_high();
+        // delay.delay_ms(1000u32);
 
         pa3.set_high();
-        valve_channel_1.set_low();
+        // valve_channel_1.set_low();
         // Janky blocking pwm
         for _ in 0..cycles {
             valve_channel_2.set_high();
@@ -94,32 +94,32 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
             valve_channel_2.set_low();
             delay.delay_us(cycle_off_us);
         }
-        // valve_channel_2.set_high();
-        delay.delay_ms(1000u32);
-
         pa3.set_low();
-        valve_channel_2.set_low();
-        valve_channel_3.set_high();
-        delay.delay_ms(1000u32);
+        delay.delay_ms(250u32);
 
-        pa3.set_high();
-        valve_channel_3.set_low();
-        valve_channel_4.set_high();
-        delay.delay_ms(1000u32);
+        // pa3.set_low();
+        // valve_channel_2.set_low();
+        // valve_channel_3.set_high();
+        // delay.delay_ms(1000u32);
 
-        pa3.set_low();
-        valve_channel_4.set_low();
-        valve_channel_5.set_high();
-        delay.delay_ms(1000u32);
+        // pa3.set_high();
+        // valve_channel_3.set_low();
+        // valve_channel_4.set_high();
+        // delay.delay_ms(1000u32);
 
-        pa3.set_high();
-        valve_channel_5.set_low();
-        valve_channel_6.set_high();
-        delay.delay_ms(1000u32);
+        // pa3.set_low();
+        // valve_channel_4.set_low();
+        // valve_channel_5.set_high();
+        // delay.delay_ms(1000u32);
 
-        pa3.set_low();
-        valve_channel_6.set_low();
-        valve_channel_7.set_high();
-        delay.delay_ms(1000u32);
+        // pa3.set_high();
+        // valve_channel_5.set_low();
+        // valve_channel_6.set_high();
+        // delay.delay_ms(1000u32);
+
+        // pa3.set_low();
+        // valve_channel_6.set_low();
+        // valve_channel_7.set_high();
+        // delay.delay_ms(1000u32);
     }
 }

@@ -6,7 +6,7 @@ keywords = ["arm", "bare-metal", "blink", "tm4c129", "stellaris", "launchpad"]
 license = "MIT"
 name = "tm4c129-launchpad"
 readme = "README.md"
-version = "0.2.0"
+version = "0.2.1"
 description = "TM4C129-XL Launchpad board crate"
 repository = "https://github.com/jlogan03/tm4c129-launchpad"
 categories = ["hardware-support"]
@@ -27,8 +27,8 @@ debug-assertions = true
 overflow-checks = true
 
 [dependencies]
-cortex-m = "0.7.4"
-cortex-m-rt = "0.7.1"
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.3"
 embedded-hal = "0.2.7"
 tm4c129x-hal = "0.9.2"
 panic-never = "0.1.0"

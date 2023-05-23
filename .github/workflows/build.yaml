@@ -20,10 +20,20 @@ jobs:
           # A target with no base runtime is required to test no-std and panic-never
           rustup target add thumbv7em-none-eabihf
           rustup install nightly
-      - name: Build and test
+      - name: Build firmware
         run: |
           # All we can really do to test without HITL or a really time-consuming QEMU setup
           # is build all the examples
+          cd ./firmware
           cargo build --examples
+          cd ../
+      - name: Check software
+        run: |
+          # All we can really do to test without HITL or a really time-consuming QEMU setup
+          # is build all the examples
+          cd ./software/udp_echo
+          cargo check
+          cd ../udp_stream
+          cargo check
 
       - run: echo "🍏 This job's status is ${{ job.status }}."

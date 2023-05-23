@@ -2,8 +2,8 @@
 
 use core::fmt;
 
-use ufmt::derive::uDebug;
 use static_assertions::const_assert;
+use ufmt::derive::uDebug;
 
 /// Number of descriptors/buffer segments
 pub const RXDESCRS: usize = 30;
@@ -46,28 +46,26 @@ impl RXDL {
         // Set descriptor list start pointer
         rxdl.rxdladdr = &mut (rxdl.descriptors[0]) as *mut RDES;
 
-        unsafe {
-            for i in 0..RXDESCRS {
-                rxdl.rdesref = &mut (rxdl.descriptors[i]) as *mut RDES;
-                let buffer_ptr = &mut (rxdl.buffers.0[i]) as *mut [u8; RXBUFSIZE];
-                rxdl.set_buffer_pointer(buffer_ptr as u32);
+        for i in 0..RXDESCRS {
+            rxdl.rdesref = &mut (rxdl.descriptors[i]) as *mut RDES;
+            let buffer_ptr = &mut (rxdl.buffers.0[i]) as *mut [u8; RXBUFSIZE];
+            rxdl.set_buffer_pointer(buffer_ptr as u32);
 
-                if i < RXDESCRS - 1 {
-                    rxdl.set_next_pointer(&(rxdl.descriptors[i + 1]) as *const RDES as u32);
-                } else {
-                    // This is the end of the ring. Point back toward the start.
-                    rxdl.set_next_pointer(rxdl.rxdladdr as u32);
-                    rxdl.set_rdes1(RDES1::RER, None);
-                }
-                // Indicate descriptors are chained
-                rxdl.set_rdes1(RDES1::RCH, None);
-                // Disable interrupt-on-completion
-                rxdl.set_rdes1(RDES1::DI, None);
-                // Tell the DMA how large the buffers are
-                rxdl.set_rdes1(RDES1::RBS1, Some(RXBUFSIZE as u16));
-                // DMA initially owns all the descriptors
-                rxdl.give();
+            if i < RXDESCRS - 1 {
+                rxdl.set_next_pointer(&(rxdl.descriptors[i + 1]) as *const RDES as u32);
+            } else {
+                // This is the end of the ring. Point back toward the start.
+                rxdl.set_next_pointer(rxdl.rxdladdr as u32);
+                rxdl.set_rdes1(RDES1::RER, None);
             }
+            // Indicate descriptors are chained
+            rxdl.set_rdes1(RDES1::RCH, None);
+            // Disable interrupt-on-completion
+            rxdl.set_rdes1(RDES1::DI, None);
+            // Tell the DMA how large the buffers are
+            rxdl.set_rdes1(RDES1::RBS1, Some(RXBUFSIZE as u16));
+            // DMA initially owns all the descriptors
+            rxdl.give();
         }
 
         rxdl.rdesref = rxdl.rxdladdr; // Reset current descriptor to the start of the ring
@@ -79,7 +77,7 @@ impl RXDL {
     pub fn next(&mut self) -> &mut RXDL {
         if self.get_rdes1(RDES1::RCH) != 0 {
             // We are chaining to the next descriptor in the list
-            self.rdesref = unsafe { self.get_next_pointer() as *mut RDES };
+            self.rdesref = self.get_next_pointer() as *mut RDES;
         } else {
             // We are looping back to the start of the list
             self.rdesref = self.rxdladdr;
@@ -209,10 +207,9 @@ impl RXDL {
 impl fmt::Debug for RXDL {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // f.debug_struct("TX Descriptor List").field("\nStart Address", &self.txdladdr).finish()
-        unsafe {
-            write!(
-                f,
-                "
+        write!(
+            f,
+            "
             RX Descriptor List
             ------------------
             Root Descriptor Address: {}
@@ -247,38 +244,37 @@ impl fmt::Debug for RXDL {
                 RER: {}
                 RCH: {}
                 ",
-                self.rxdladdr as usize,
-                self.rdesref as usize,
-                self.get_rdes0(RDES0::OWN),
-                // Errors
-                self.get_rdes0(RDES0::ES),
-                self.get_rdes0(RDES0::AFM),
-                self.get_rdes0(RDES0::DE),
-                self.get_rdes0(RDES0::SAF),
-                self.get_rdes0(RDES0::LE),
-                self.get_rdes0(RDES0::OE),
-                self.get_rdes0(RDES0::LC),
-                self.get_rdes0(RDES0::RWT),
-                self.get_rdes0(RDES0::RE),
-                self.get_rdes0(RDES0::DBE),
-                self.get_rdes0(RDES0::CE),
-                // Cfg
-                self.get_next_pointer(),
-                self.get_buffer_pointer(),
-                self.get_rdes1(RDES1::RBS1),
-                self.get_rdes1(RDES1::RBS2),
-                self.get_rdes0(RDES0::FL),
-                self.get_rdes0(RDES0::VLAN),
-                self.get_rdes0(RDES0::FS),
-                self.get_rdes0(RDES0::LS),
-                self.get_rdes0(RDES0::TA),
-                self.get_rdes0(RDES0::FT),
-                self.get_rdes0(RDES0::ESA),
-                self.get_rdes1(RDES1::DI),
-                self.get_rdes1(RDES1::RER),
-                self.get_rdes1(RDES1::RCH),
-            )
-        }
+            self.rxdladdr as usize,
+            self.rdesref as usize,
+            self.get_rdes0(RDES0::OWN),
+            // Errors
+            self.get_rdes0(RDES0::ES),
+            self.get_rdes0(RDES0::AFM),
+            self.get_rdes0(RDES0::DE),
+            self.get_rdes0(RDES0::SAF),
+            self.get_rdes0(RDES0::LE),
+            self.get_rdes0(RDES0::OE),
+            self.get_rdes0(RDES0::LC),
+            self.get_rdes0(RDES0::RWT),
+            self.get_rdes0(RDES0::RE),
+            self.get_rdes0(RDES0::DBE),
+            self.get_rdes0(RDES0::CE),
+            // Cfg
+            self.get_next_pointer(),
+            self.get_buffer_pointer(),
+            self.get_rdes1(RDES1::RBS1),
+            self.get_rdes1(RDES1::RBS2),
+            self.get_rdes0(RDES0::FL),
+            self.get_rdes0(RDES0::VLAN),
+            self.get_rdes0(RDES0::FS),
+            self.get_rdes0(RDES0::LS),
+            self.get_rdes0(RDES0::TA),
+            self.get_rdes0(RDES0::FT),
+            self.get_rdes0(RDES0::ESA),
+            self.get_rdes1(RDES1::DI),
+            self.get_rdes1(RDES1::RER),
+            self.get_rdes1(RDES1::RCH),
+        )
     }
 }
 

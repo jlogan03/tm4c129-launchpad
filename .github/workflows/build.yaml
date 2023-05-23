@@ -20,6 +20,8 @@ jobs:
           # A target with no base runtime is required to test no-std and panic-never
           rustup target add thumbv7em-none-eabihf
           rustup install nightly
+          # Linker modification to prevent stack excursions
+          cargo install flip-link
       - name: Build firmware
         run: |
           # All we can really do to test without HITL or a really time-consuming QEMU setup

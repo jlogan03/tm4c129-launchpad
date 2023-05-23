@@ -6,7 +6,7 @@
 use core::convert::Infallible;
 use core::fmt::Write;
 
-use embedded_hal::blocking::delay::DelayUs;
+
 use embedded_hal::digital::v2::*; // GPIO set high/low
 
 use tm4c129x_hal::gpio::GpioExt;  // Split GPIO port
@@ -129,7 +129,7 @@ pub fn stellaris_main(mut board: board::Board) -> ! {
         }
     }
 
-    use cortex_m::asm::nop;
+    
     loop {
         // Check ethernet
         poll_ethernet(&mut board.enet, &mut uart, &mut udp, &mut buffer);
@@ -183,7 +183,7 @@ fn poll_ethernet<TX, RX, RTS, CTS>(
     }
 
     // Receive all buffered frames
-    while let Ok(num_bytes) = enet.receive(buffer) {
+    while let Ok(_num_bytes) = enet.receive(buffer) {
         // We received ethernet data
         // let _ = uwriteln!(uart, "\nReceived {} ethernet bytes", num_bytes);
 

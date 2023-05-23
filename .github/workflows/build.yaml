@@ -1,0 +1,41 @@
+name: Build and test
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
+      - name: Install deps
+        run: |
+          #sudo apt update
+          sudo apt install build-essential
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+          # A target with no base runtime is required to test no-std and panic-never
+          rustup target add thumbv7em-none-eabihf
+          rustup install nightly
+          # Linker modification to prevent stack excursions
+          cargo install flip-link
+      - name: Build firmware
+        run: |
+          # All we can really do to test without HITL or a really time-consuming QEMU setup
+          # is build all the examples
+          cd ./firmware
+          cargo build --examples
+          cd ../
+      - name: Check software
+        run: |
+          # All we can really do to test without HITL or a really time-consuming QEMU setup
+          # is build all the examples
+          cd ./software/udp_echo
+          cargo check
+          cd ../udp_stream
+          cargo check
+
+      - run: echo "🍏 This job's status is ${{ job.status }}."

@@ -133,28 +133,26 @@ impl Ethernet {
                     // Push the packet through
                     self.emacclear();
                     self.txstart();
-                    self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
+                    self.emac.txpolld.write(|w| w.tpd().bits(0));
                     return Ok(());
-                    
                 } else {
                     self.txdl.next();
                 }
             }
         }
         // We checked every descriptor and none of them are available
-        self.txpush();  // Try to get the TX engine moving in case it has stalled out
+        self.txpush(); // Try to get the TX engine moving in case it has stalled out
         return Err(EthernetError::DescriptorUnavailable);
     }
 
     /// Receive a frame of unknown size that may be up to 1522 bytes
     pub fn receive(&mut self, buf: &mut [u8; RXBUFSIZE]) -> Result<usize, EthernetError> {
-        // Start from wherever the hardware is now
         let mut bytes_received: usize = 0;
 
         // Poll the DMA again in case it was stalled due to lack of free descriptors
         self.emacclear();
-        self.rxstart();  // Make sure the receive engine is enabled
-        self.emac.rxpolld.write(|w| unsafe{w.rpd().bits(0)});
+        self.rxstart(); // Make sure the receive engine is enabled
+        self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
 
         unsafe {
             // Walk through descriptor list until we find one that is the start of a received frame
@@ -187,7 +185,7 @@ impl Ethernet {
                 // This costs about 10us of round-trip latency.
                 // Meanwhile, doing a volatile deref of each individual u8 here instead of dereferencing the entire buffer
                 // actually removes about 140us of roundtrip latency.
-                let ix = RXBUFSIZE.min(bytes_received).min(buf.len());  // Make sure we can never run off the list
+                let ix = RXBUFSIZE.min(bytes_received).min(buf.len()); // Make sure we can never run off the list
                 for i in 0..ix {
                     buf[i] = ((buffer_pointer + i as u32) as *mut u8).read_volatile();
                 }
@@ -196,7 +194,6 @@ impl Ethernet {
             // Give this descriptor back to the DMA
             self.rxdl.give();
 
-            
             Ok(bytes_received)
         }
     }
@@ -268,12 +265,8 @@ impl Ethernet {
         // Doing this using unsafe instead of field-by-field because there's a bit in each register
         // that needs to be cleared in the same write operation as all the others,
         // and both registers are safe to write to every field.
-        self.emac
-            .mmcrxim
-            .write(|w| unsafe { w.bits(u32::MAX) });
-        self.emac
-            .mmctxim
-            .write(|w| unsafe { w.bits(u32::MAX) });
+        self.emac.mmcrxim.write(|w| unsafe { w.bits(u32::MAX) });
+        self.emac.mmctxim.write(|w| unsafe { w.bits(u32::MAX) });
 
         // MII (communication between EMAC and EPHY)
         match self.system_clk_freq {
@@ -377,7 +370,7 @@ impl Ethernet {
         self.emacclear();
         for _ in 0..RXDESCRS {
             self.rxstart();
-            self.emac.rxpolld.write(|w| unsafe{w.rpd().bits(0)});
+            self.emac.rxpolld.write(|w| unsafe { w.rpd().bits(0) });
         }
     }
 
@@ -389,7 +382,7 @@ impl Ethernet {
         self.emacclear();
         for _ in 0..TXDESCRS {
             self.txstart();
-            self.emac.txpolld.write(|w| unsafe{w.tpd().bits(0)});
+            self.emac.txpolld.write(|w| unsafe { w.tpd().bits(0) });
         }
     }
 
@@ -465,9 +458,7 @@ impl Ethernet {
     /// Clear EMAC interrupts by setting their bits
     pub fn emacclear(&mut self) {
         // These have to be done all-at-once, because the summary bits are sticky and will reset otherwise
-        self.emac.dmaris.write(|w| {
-            unsafe{w.bits(u32::MAX)}
-        }); // This interrupt is cleared by setting the bit, not by clearing it
+        self.emac.dmaris.write(|w| unsafe { w.bits(u32::MAX) }); // This interrupt is cleared by setting the bit, not by clearing it
     }
 
     /// Do a soft reset of the EMAC and DMA.
@@ -493,7 +484,7 @@ impl Ethernet {
 ///
 /// This is the number of alternating 0-1 bits transmitted at the start of each frame
 /// in order to synchronize clocks between the transmitter and receiver.
-/// 
+///
 /// Tradeoff is between speed and noise tolerance.
 #[derive(uDebug, Debug)]
 #[allow(missing_docs)]
@@ -506,7 +497,7 @@ pub enum PreambleLength {
 /// Choices of interframe gap length in bits.
 ///
 /// This is the duration of radio-silence used to signal the end of a transmission frame.
-/// 
+///
 /// Tradeoff is between speed and noise tolerance.
 #[derive(uDebug, Debug)]
 #[allow(missing_docs)]
@@ -534,10 +525,10 @@ pub enum BackOffLimit {
     _1024,
 }
 
-/// TX memory transfer threshold for memory controller. 
-/// 
+/// TX memory transfer threshold for memory controller.
+///
 /// This is the number of bytes in the buffer required to trigger a transfer.
-/// 
+///
 /// This setting is ignored when the DMA is in store-and-forward mode, which is
 /// required for checksum offload.
 #[derive(uDebug, Debug)]
@@ -556,7 +547,7 @@ pub enum TXThresholdDMA {
 /// RX memory transfer threshold for memory controller
 ///
 /// This is the number of bytes in the buffer required to trigger a transfer.
-/// 
+///
 /// This setting is ignored when the DMA is in store-and-forward mode, which is
 /// required for checksum offload.
 #[derive(uDebug, Debug)]
@@ -569,7 +560,7 @@ pub enum RXThresholdDMA {
 }
 
 /// TX/RX memory transfer burst size in 32-bit words.
-/// 
+///
 /// From empirical testing, _1 (the default) is optimal for both latency and throughput.
 #[derive(uDebug, Debug, Eq, PartialEq)]
 #[allow(missing_docs)]

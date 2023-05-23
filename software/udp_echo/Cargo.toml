@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.20.1", features = ["full"] }
-hyper = { version = "0.14.20", features = ["full"] }
-chrono = "0.4.22"
-rpassword = "7.0.0"
-core_affinity = "0.5.10"
+tokio = { version = "1.28.1", features = ["full"] }
+hyper = { version = "0.14.26", features = ["full"] }
+chrono = "0.4.24"
+rpassword = "7.2.0"
+core_affinity = "0.8.0"

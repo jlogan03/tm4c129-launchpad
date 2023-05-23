@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/firmware"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/software/udp_echo"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/software/udp_stream"
+    schedule:
+      interval: "daily"

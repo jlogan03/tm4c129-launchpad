@@ -8,21 +8,21 @@ extern crate tm4c129_launchpad;
 extern crate tm4c129x_hal;
 
 use cortex_m::peripheral::syst::SystClkSource;
-use cortex_m_rt::{exception, ExceptionFrame};
-use static_assertions::const_assert;
+
+
 
 use core::fmt::Write;
 
-use embedded_hal::blocking::delay::DelayMs;
+
 use embedded_hal::digital::v2::*; // GPIO set high/low
 use embedded_hal::serial::Read as ReadHal;
-use tm4c129_launchpad::board::{clocks, safe, Board};
+use tm4c129_launchpad::board::{clocks, Board};
 use tm4c129_launchpad::startup::Interrupt;
 use tm4c129x_hal::gpio::GpioExt;
 use tm4c129x_hal::serial;
 use tm4c129x_hal::time::Bps;
 
-use irq::{handler, scope, scoped_interrupts};
+use irq::{handler, scope};
 
 #[no_mangle]
 pub fn stellaris_main(mut board: Board) -> ! {
@@ -43,7 +43,7 @@ pub fn stellaris_main(mut board: Board) -> ! {
     //    Set tick timing
     let us_per_interrupt = 1000; // [us] How many us per interrupt?
     let clock_cycles_per_us = clocks().sysclk.0 / 1_000_000; // [cycles]
-    let mut reload = us_per_interrupt * clock_cycles_per_us + 1; //  [cycles/interrupt] Interrupt after this many clock cycles
+    let _reload = us_per_interrupt * clock_cycles_per_us + 1; //  [cycles/interrupt] Interrupt after this many clock cycles
     
     //    Configure and enable SysTick interrupt
     board.core_peripherals.SYST.set_reload(120_000_000 / 1000);
